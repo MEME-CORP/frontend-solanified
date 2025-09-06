@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solanafied - Unified Solana Ecosystem</title>
+    
+    <!-- Material Design 3 -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Symbols+Outlined" rel="stylesheet">
+    
+    <!-- Solana Web3.js -->
+    <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
+    
+    <!-- Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <!-- Environment Configuration (loaded by server) -->
+    <script src="/env.js"></script>
+    
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- App Bar -->
+    <header class="app-bar">
+        <div class="app-bar-container">
+            <div class="app-bar-leading">
+                <span class="material-symbols-outlined logo-icon">hub</span>
+                <h1 class="app-title">Solanafied</h1>
+            </div>
+            <div class="app-bar-trailing">
+                <button id="theme-toggle" class="icon-button" aria-label="Toggle theme">
+                    <span class="material-symbols-outlined">dark_mode</span>
+                </button>
+                <button id="wallet-connect" class="wallet-connect-btn" aria-label="Connect Wallet">
+                    <span class="material-symbols-outlined">account_balance_wallet</span>
+                    <span class="wallet-text">Connect Wallet</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Hero Section -->
+        <section class="hero-section">
+            <div class="hero-content">
+                <h2 class="hero-title">Unify Your Solana Ecosystem</h2>
+                <p class="hero-subtitle">Intelligently simple interface connecting your external wallet to powerful in-app asset management</p>
+                <div class="hero-pattern"></div>
+            </div>
+        </section>
+
+        <!-- Wallet Status Card -->
+        <section class="wallet-status" id="wallet-status" style="display: none;">
+            <div class="card wallet-card">
+                <div class="card-header">
+                    <span class="material-symbols-outlined">account_balance_wallet</span>
+                    <h3>Wallet Connected</h3>
+                    <div class="connection-indicator connected"></div>
+                </div>
+                <div class="card-content">
+                    <div class="wallet-address">
+                        <label>Address:</label>
+                        <span id="wallet-address" class="address-text"></span>
+                        <button class="copy-btn" onclick="copyAddress()">
+                            <span class="material-symbols-outlined">content_copy</span>
+                        </button>
+                    </div>
+                    <div class="balance-grid">
+                        <div class="balance-item">
+                            <span class="balance-label">SOL Balance</span>
+                            <span id="sol-balance" class="balance-value">0.000</span>
+                        </div>
+                        <div class="balance-item">
+                            <span class="balance-label">SPL Tokens</span>
+                            <span id="spl-balance" class="balance-value">0.000</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Dashboard Grid -->
+        <section class="dashboard-grid" id="dashboard" style="display: none;">
+            <!-- User Profile Card -->
+            <div class="card profile-card">
+                <div class="card-header">
+                    <span class="material-symbols-outlined">person</span>
+                    <h3>Profile</h3>
+                </div>
+                <div class="card-content">
+                    <div class="profile-info">
+                        <div class="info-item">
+                            <label>User ID:</label>
+                            <span id="user-id">Loading...</span>
+                        </div>
+                        <div class="balance-summary">
+                            <div class="balance-row">
+                                <span>SOL:</span>
+                                <span id="profile-sol">0.000</span>
+                            </div>
+                            <div class="balance-row">
+                                <span>SPL:</span>
+                                <span id="profile-spl">0.000</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bundlers Card -->
+            <div class="card bundlers-card">
+                <div class="card-header">
+                    <span class="material-symbols-outlined">inventory_2</span>
+                    <h3>Bundlers</h3>
+                    <button class="icon-button" onclick="refreshBundlers()">
+                        <span class="material-symbols-outlined">refresh</span>
+                    </button>
+                </div>
+                <div class="card-content">
+                    <div id="bundlers-list" class="bundlers-list">
+                        <div class="loading-state">
+                            <div class="spinner"></div>
+                            <span>Loading bundlers...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Mother Wallets Card -->
+            <div class="card mother-wallets-card">
+                <div class="card-header">
+                    <span class="material-symbols-outlined">folder</span>
+                    <h3>Mother Wallets</h3>
+                    <div class="filter-chips">
+                        <button class="chip active" data-filter="all">All</button>
+                        <button class="chip" data-filter="available">Available</button>
+                        <button class="chip" data-filter="assigned">Assigned</button>
+                    </div>
+                </div>
+                <div class="card-content">
+                    <div id="mother-wallets-list" class="mother-wallets-list">
+                        <div class="loading-state">
+                            <div class="spinner"></div>
+                            <span>Loading wallets...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tokens Card -->
+            <div class="card tokens-card">
+                <div class="card-header">
+                    <span class="material-symbols-outlined">token</span>
+                    <h3>Tokens</h3>
+                </div>
+                <div class="card-content">
+                    <div id="tokens-list" class="tokens-list">
+                        <div class="loading-state">
+                            <div class="spinner"></div>
+                            <span>Loading tokens...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- FAB for Quick Actions -->
+        <button class="fab" id="main-fab" aria-label="Quick actions">
+            <span class="material-symbols-outlined">add</span>
+        </button>
+
+        <!-- FAB Menu -->
+        <div class="fab-menu" id="fab-menu">
+            <button class="fab-option" onclick="createBundler()">
+                <span class="material-symbols-outlined">inventory_2</span>
+                <span class="fab-label">Create Bundler</span>
+            </button>
+            <button class="fab-option" onclick="addToken()">
+                <span class="material-symbols-outlined">token</span>
+                <span class="fab-label">Add Token</span>
+            </button>
+        </div>
+    </main>
+
+    <!-- Snackbar for notifications -->
+    <div class="snackbar" id="snackbar">
+        <span class="snackbar-message"></span>
+        <button class="snackbar-action">Dismiss</button>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loading-overlay">
+        <div class="loading-content">
+            <div class="spinner large"></div>
+            <span>Connecting to Solana...</span>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="database.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
