@@ -27,6 +27,7 @@ async function makeOrchestratorRequest(endpoint, method = 'POST', data = null, t
       method,
       headers: {
         'Content-Type': 'application/json',
+        'Accept': 'application/json',
       },
       signal: controller.signal
     };
@@ -178,12 +179,14 @@ async function createBundler(userWalletId, bundlerBalance, idempotencyKey = null
     
     const requestData = {
       user_wallet_id: userWalletId,
-      bundler_balance: bundlerBalance
+      bundler_balance: parseInt(bundlerBalance) // Ensure it's an integer
     };
     
     if (idempotencyKey) {
       requestData.idempotency_key = idempotencyKey;
     }
+    
+    console.log('🔍 [BUNDLER] Final request data being sent:', requestData);
     
     const response = await makeOrchestratorRequest('/api/orchestrator/create-bundler', 'POST', requestData);
     
@@ -409,6 +412,11 @@ window.OrchestratorAPI = {
 console.log('🔗 Orchestrator API loaded successfully');
 console.log('🔗 Base URL:', ORCHESTRATOR_BASE_URL);
 console.log('🔗 Available functions:', Object.keys(window.OrchestratorAPI || {}));
+
+// Test basic connectivity
+fetch(ORCHESTRATOR_BASE_URL, { method: 'HEAD', mode: 'no-cors' })
+  .then(() => console.log('✅ Basic connectivity to orchestrator: OK'))
+  .catch(err => console.log('❌ Basic connectivity to orchestrator: FAILED', err.message));
 
 // Auto-setup notification listener when DOM is ready
 if (document.readyState === 'loading') {
