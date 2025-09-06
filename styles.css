@@ -408,6 +408,21 @@ body::before {
   color: var(--md-sys-color-on-surface-variant);
 }
 
+.wallet-address-display {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  background-color: var(--md-sys-color-surface-container-high);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-sm);
+}
+
+.wallet-address-display #in-app-public-key {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  color: var(--md-sys-color-on-surface);
+}
+
 .balance-summary {
   margin-top: var(--spacing-md);
   padding: var(--spacing-md);

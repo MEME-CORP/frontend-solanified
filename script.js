@@ -1047,6 +1047,22 @@ async function copyAddress() {
   }
 }
 
+/**
+ * Copy in-app wallet address to clipboard
+ */
+async function copyInAppAddress() {
+  try {
+    if (!currentUser || !currentUser.in_app_public_key) return;
+    
+    await navigator.clipboard.writeText(currentUser.in_app_public_key);
+    showSnackbar('In-app wallet address copied to clipboard', 'success');
+    
+  } catch (error) {
+    console.error('❌ Failed to copy in-app address:', error);
+    showSnackbar('Failed to copy in-app address', 'error');
+  }
+}
+
 // ========== REAL-TIME UPDATES ==========
 
 /**
@@ -1215,5 +1231,6 @@ window.SolanafiedApp = {
   addToken,
   refreshBundlers,
   copyAddress,
+  copyInAppAddress,
   toggleTheme
 };
