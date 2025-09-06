@@ -21,6 +21,8 @@ async function makeOrchestratorRequest(endpoint, method = 'POST', data = null, t
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
     
+    const fullUrl = `${ORCHESTRATOR_BASE_URL}${endpoint}`;
+    
     const config = {
       method,
       headers: {
@@ -33,15 +35,30 @@ async function makeOrchestratorRequest(endpoint, method = 'POST', data = null, t
       config.body = JSON.stringify(data);
     }
     
-    console.log(`📡 [ORCHESTRATOR] Making ${method} request to ${endpoint}`, data);
+    console.log(`📡 [ORCHESTRATOR] Making ${method} request to ${fullUrl}`);
+    console.log(`📡 [ORCHESTRATOR] Request config:`, config);
+    console.log(`📡 [ORCHESTRATOR] Request data:`, data);
     
-    const response = await fetch(`${ORCHESTRATOR_BASE_URL}${endpoint}`, config);
+    const response = await fetch(fullUrl, config);
     clearTimeout(timeoutId);
     
+    console.log(`📡 [ORCHESTRATOR] Response status: ${response.status} ${response.statusText}`);
+    console.log(`📡 [ORCHESTRATOR] Response headers:`, Object.fromEntries(response.headers.entries()));
+    
+    // Check if response is JSON
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      const textResponse = await response.text();
+      console.error(`❌ [ORCHESTRATOR] Non-JSON response:`, textResponse);
+      throw new Error(`Server returned non-JSON response: ${textResponse.substring(0, 200)}`);
+    }
+    
     const responseData = await response.json();
+    console.log(`📡 [ORCHESTRATOR] Response data:`, responseData);
     
     if (!response.ok) {
-      throw new Error(responseData.error?.message || `HTTP ${response.status}: ${response.statusText}`);
+      const errorMessage = responseData.error?.message || responseData.message || `HTTP ${response.status}: ${response.statusText}`;
+      throw new Error(errorMessage);
     }
     
     console.log(`✅ [ORCHESTRATOR] Request successful:`, responseData);
@@ -49,9 +66,15 @@ async function makeOrchestratorRequest(endpoint, method = 'POST', data = null, t
     
   } catch (error) {
     console.error(`❌ [ORCHESTRATOR] Request failed for ${endpoint}:`, error);
+    console.error(`❌ [ORCHESTRATOR] Error type:`, error.name);
+    console.error(`❌ [ORCHESTRATOR] Error message:`, error.message);
     
     if (error.name === 'AbortError') {
       throw new Error('Request timed out. Please try again.');
+    }
+    
+    if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      throw new Error('Network error. Please check your connection and try again.');
     }
     
     throw error;
@@ -74,13 +97,16 @@ function handleOrchestratorError(error, operation) {
     userMessage = error.message; // Show balance-related errors directly
   } else if (error.message.includes('not found')) {
     userMessage = 'Requested resource not found.';
+  } else if (error.message) {
+    userMessage = `Failed to ${operation}: ${error.message}`;
   }
   
   if (typeof showSnackbar === 'function') {
     showSnackbar(userMessage, 'error');
   }
   
-  return null;
+  // Re-throw the error so the calling function can handle it
+  throw error;
 }
 
 // ========== WALLET OPERATIONS ==========
@@ -105,7 +131,8 @@ async function createInAppWallet(userWalletId) {
     };
     
   } catch (error) {
-    return handleOrchestratorError(error, 'create in-app wallet');
+    handleOrchestratorError(error, 'create in-app wallet');
+    return null;
   } finally {
     showLoadingOverlay(false);
   }
@@ -135,7 +162,8 @@ async function verifyInAppBalance(userWalletId) {
     };
     
   } catch (error) {
-    return handleOrchestratorError(error, 'verify balance');
+    handleOrchestratorError(error, 'verify balance');
+    return null;
   }
 }
 
@@ -146,7 +174,6 @@ async function verifyInAppBalance(userWalletId) {
  */
 async function createBundler(userWalletId, bundlerBalance, idempotencyKey = null) {
   try {
-    console.log('🔧 [ORCHESTRATOR] createBundler called with:', { userWalletId, bundlerBalance, idempotencyKey });
     showLoadingOverlay(true, 'Creating bundler...');
     
     const requestData = {
@@ -157,9 +184,6 @@ async function createBundler(userWalletId, bundlerBalance, idempotencyKey = null
     if (idempotencyKey) {
       requestData.idempotency_key = idempotencyKey;
     }
-    
-    console.log('📡 [ORCHESTRATOR] About to make request with data:', requestData);
-    console.log('📡 [ORCHESTRATOR] Request URL:', `${ORCHESTRATOR_BASE_URL}/api/orchestrator/create-bundler`);
     
     const response = await makeOrchestratorRequest('/api/orchestrator/create-bundler', 'POST', requestData);
     
@@ -174,7 +198,8 @@ async function createBundler(userWalletId, bundlerBalance, idempotencyKey = null
     };
     
   } catch (error) {
-    return handleOrchestratorError(error, 'create bundler');
+    handleOrchestratorError(error, 'create bundler');
+    return null;
   } finally {
     showLoadingOverlay(false);
   }
@@ -216,7 +241,8 @@ async function createAndBuyToken(userWalletId, tokenData) {
     return response;
     
   } catch (error) {
-    return handleOrchestratorError(error, 'create and buy token');
+    handleOrchestratorError(error, 'create and buy token');
+    return null;
   } finally {
     showLoadingOverlay(false);
   }
@@ -240,7 +266,8 @@ async function sellToken(userWalletId, sellPercent) {
     return response;
     
   } catch (error) {
-    return handleOrchestratorError(error, 'sell token');
+    handleOrchestratorError(error, 'sell token');
+    return null;
   } finally {
     showLoadingOverlay(false);
   }
@@ -266,7 +293,8 @@ async function transferToOwner(userWalletId, amountSol) {
     return response;
     
   } catch (error) {
-    return handleOrchestratorError(error, 'transfer to owner');
+    handleOrchestratorError(error, 'transfer to owner');
+    return null;
   } finally {
     showLoadingOverlay(false);
   }
@@ -379,6 +407,8 @@ window.OrchestratorAPI = {
 };
 
 console.log('🔗 Orchestrator API loaded successfully');
+console.log('🔗 Base URL:', ORCHESTRATOR_BASE_URL);
+console.log('🔗 Available functions:', Object.keys(window.OrchestratorAPI || {}));
 
 // Auto-setup notification listener when DOM is ready
 if (document.readyState === 'loading') {
