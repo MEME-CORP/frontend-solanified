@@ -74,10 +74,19 @@ async function connectWallet() {
     const userRegistered = await checkUserRegistration();
     
     if (userRegistered) {
-      // User is registered, load full dashboard
-      await loadDashboardData();
-      setupRealtimeSubscriptions();
-      showSnackbar('Welcome back!', 'success');
+      // User is registered, check balance and show appropriate UI
+      const balance = currentUser.balance_sol || 0;
+      
+      if (balance >= 1) {
+        // User has sufficient balance, load full dashboard
+        await loadDashboardData();
+        setupRealtimeSubscriptions();
+        showSnackbar('Welcome back! Ready to create bundlers.', 'success');
+      } else {
+        // User has in-app wallet but insufficient balance
+        showFundingPrompt();
+        showSnackbar(`Welcome back! Please fund your in-app wallet (${DatabaseAPI.formatBalance(balance)} SOL). You need ≥1 SOL to create bundlers.`, 'warning');
+      }
     } else {
       // User not registered, show registration prompt
       showRegistrationPrompt();
@@ -139,8 +148,18 @@ async function disconnectWallet() {
  */
 async function checkUserRegistration() {
   try {
-    if (!currentWallet || !DatabaseAPI) {
-      throw new Error('Wallet not connected or database not available');
+    if (!currentWallet) {
+      throw new Error('Wallet not connected');
+    }
+    
+    // Ensure database is initialized
+    if (!DatabaseAPI) {
+      throw new Error('Database API not available. Please ensure the page is fully loaded.');
+    }
+    
+    // Try to initialize database if not already done
+    if (!DatabaseAPI.initialize()) {
+      throw new Error('Failed to initialize database connection. Please check your internet connection.');
     }
     
     const walletId = currentWallet.publicKey.toString();
@@ -156,14 +175,15 @@ async function checkUserRegistration() {
       console.log('✅ User found in database:', {
         id: user.id,
         wallet_id: DatabaseAPI.truncateAddress(user.user_wallet_id),
+        in_app_public_key: DatabaseAPI.truncateAddress(user.in_app_public_key),
         balance_sol: user.balance_sol,
         balance_spl: user.balance_spl
       });
       
       currentUser = user;
       
-      // Get actual SOL balance from blockchain
-      await updateWalletBalance();
+      // Update balance from blockchain to get latest data
+      await updateInAppWalletBalance();
       
       return true;
     } else {
@@ -175,7 +195,15 @@ async function checkUserRegistration() {
     
   } catch (error) {
     console.error('❌ Failed to check user registration:', error);
-    showSnackbar('Failed to check registration status', 'error');
+    
+    let message = 'Failed to check registration status';
+    if (error.message.includes('Database API not available')) {
+      message = 'Database connection failed. Please refresh the page and try again.';
+    } else if (error.message.includes('Failed to initialize database')) {
+      message = 'Cannot connect to database. Please check your internet connection.';
+    }
+    
+    showSnackbar(message, 'error');
     return false;
   } finally {
     showLoadingOverlay(false);
@@ -183,7 +211,7 @@ async function checkUserRegistration() {
 }
 
 /**
- * Update wallet balance from blockchain
+ * Update wallet balance from blockchain (for main wallet)
  */
 async function updateWalletBalance() {
   try {
@@ -200,22 +228,47 @@ async function updateWalletBalance() {
     const balance = await connection.getBalance(currentWallet.publicKey);
     const solBalance = balance / solanaWeb3.LAMPORTS_PER_SOL;
     
-    console.log(`💰 Wallet balance: ${solBalance} SOL`);
-    
-    // Update database if user exists
-    if (currentUser && DatabaseAPI) {
-      await DatabaseAPI.updateUserBalances(
-        currentUser.user_wallet_id,
-        solBalance,
-        0 // SPL balance - would need additional logic to fetch SPL tokens
-      );
-    }
+    console.log(`💰 Main wallet balance: ${solBalance} SOL`);
     
     // Update UI
     updateBalanceDisplay(solBalance, 0);
     
   } catch (error) {
-    console.error('❌ Failed to update wallet balance:', error);
+    console.error('❌ Failed to update main wallet balance:', error);
+  }
+}
+
+/**
+ * Update in-app wallet balance from database
+ */
+async function updateInAppWalletBalance() {
+  try {
+    if (!currentUser || !DatabaseAPI) return 0;
+    
+    console.log('💰 Checking in-app wallet balance from database...');
+    
+    // Get latest user data from database
+    const user = await DatabaseAPI.getUserByWalletId(currentUser.user_wallet_id);
+    
+    if (user) {
+      // Update current user object with latest data
+      currentUser.balance_sol = user.balance_sol;
+      currentUser.balance_spl = user.balance_spl;
+      
+      console.log(`💰 In-app wallet balance: ${user.balance_sol} SOL, ${user.balance_spl} SPL`);
+      
+      // Update UI with in-app wallet balance
+      updateInAppBalanceDisplay(user.balance_sol, user.balance_spl);
+      
+      return user.balance_sol;
+    } else {
+      console.error('❌ User not found in database');
+      return 0;
+    }
+    
+  } catch (error) {
+    console.error('❌ Failed to update in-app wallet balance:', error);
+    return 0;
   }
 }
 
@@ -260,21 +313,74 @@ function updateWalletUI() {
 }
 
 /**
- * Update balance display
+ * Update balance display (for main wallet)
  */
 function updateBalanceDisplay(solBalance, splBalance) {
   const solBalanceEl = document.getElementById('sol-balance');
   const splBalanceEl = document.getElementById('spl-balance');
-  const profileSolEl = document.getElementById('profile-sol');
-  const profileSplEl = document.getElementById('profile-spl');
   
   const formattedSol = DatabaseAPI.formatBalance(solBalance);
   const formattedSpl = DatabaseAPI.formatBalance(splBalance);
   
   if (solBalanceEl) solBalanceEl.textContent = formattedSol;
   if (splBalanceEl) splBalanceEl.textContent = formattedSpl;
+}
+
+/**
+ * Update in-app wallet balance display
+ */
+function updateInAppBalanceDisplay(solBalance, splBalance) {
+  const profileSolEl = document.getElementById('profile-sol');
+  const profileSplEl = document.getElementById('profile-spl');
+  const inAppBalanceEl = document.getElementById('in-app-balance');
+  
+  const formattedSol = DatabaseAPI.formatBalance(solBalance);
+  const formattedSpl = DatabaseAPI.formatBalance(splBalance);
+  
   if (profileSolEl) profileSolEl.textContent = formattedSol;
   if (profileSplEl) profileSplEl.textContent = formattedSpl;
+  if (inAppBalanceEl) inAppBalanceEl.textContent = formattedSol;
+  
+  // Update bundler creation button based on balance
+  updateBundlerCreationUI(solBalance);
+}
+
+/**
+ * Update bundler creation UI based on balance
+ */
+function updateBundlerCreationUI(solBalance) {
+  const createBundlerBtn = document.getElementById('create-bundler-btn');
+  const balanceWarning = document.getElementById('balance-warning');
+  
+  if (createBundlerBtn) {
+    if (solBalance >= 1) {
+      createBundlerBtn.disabled = false;
+      createBundlerBtn.classList.remove('disabled');
+      createBundlerBtn.innerHTML = `
+        <span class="material-symbols-outlined">inventory_2</span>
+        Create Bundler
+      `;
+    } else {
+      createBundlerBtn.disabled = true;
+      createBundlerBtn.classList.add('disabled');
+      createBundlerBtn.innerHTML = `
+        <span class="material-symbols-outlined">block</span>
+        Need ≥1 SOL to Create Bundler
+      `;
+    }
+  }
+  
+  if (balanceWarning) {
+    if (solBalance < 1) {
+      balanceWarning.style.display = 'block';
+      balanceWarning.innerHTML = `
+        <span class="material-symbols-outlined">warning</span>
+        You need at least 1 SOL in your in-app wallet to create a bundler. Current balance: ${DatabaseAPI.formatBalance(solBalance)} SOL
+      `;
+    } else {
+      balanceWarning.style.display = 'none';
+    }
+  }
 }
 
 /**
@@ -283,6 +389,7 @@ function updateBalanceDisplay(solBalance, splBalance) {
 function hideDashboard() {
   document.getElementById('dashboard').style.display = 'none';
   hideRegistrationPrompt();
+  hideFundingPrompt();
 }
 
 /**
@@ -358,6 +465,112 @@ function hideRegistrationPrompt() {
   const registrationPrompt = document.getElementById('registration-prompt');
   if (registrationPrompt) {
     registrationPrompt.style.display = 'none';
+  }
+}
+
+/**
+ * Show funding prompt for users with in-app wallet but insufficient balance
+ */
+function showFundingPrompt() {
+  // Hide dashboard and registration prompt
+  document.getElementById('dashboard').style.display = 'none';
+  hideRegistrationPrompt();
+  
+  // Show funding prompt
+  let fundingPrompt = document.getElementById('funding-prompt');
+  
+  if (!fundingPrompt) {
+    // Create funding prompt if it doesn't exist
+    fundingPrompt = document.createElement('section');
+    fundingPrompt.id = 'funding-prompt';
+    fundingPrompt.className = 'funding-prompt';
+    fundingPrompt.innerHTML = `
+      <div class="card funding-card">
+        <div class="card-header">
+          <span class="material-symbols-outlined">account_balance_wallet</span>
+          <h3>Fund Your In-App Wallet</h3>
+        </div>
+        <div class="card-content">
+          <div class="funding-content">
+            <div class="wallet-info">
+              <div class="info-row">
+                <span class="label">In-App Wallet Address:</span>
+                <div class="wallet-address-container">
+                  <span id="funding-wallet-address" class="wallet-address">${currentUser ? DatabaseAPI.truncateAddress(currentUser.in_app_public_key) : ''}</span>
+                  <button onclick="copyInAppAddress()" class="icon-button copy-btn" title="Copy address">
+                    <span class="material-symbols-outlined">content_copy</span>
+                  </button>
+                </div>
+              </div>
+              <div class="info-row">
+                <span class="label">Current Balance:</span>
+                <span id="funding-current-balance" class="balance-value">${currentUser ? DatabaseAPI.formatBalance(currentUser.balance_sol) : '0.000'} SOL</span>
+              </div>
+              <div class="info-row">
+                <span class="label">Required Balance:</span>
+                <span class="balance-required">≥1.000 SOL</span>
+              </div>
+            </div>
+            <div class="funding-instructions">
+              <h4>📋 Instructions:</h4>
+              <ol>
+                <li>Copy your in-app wallet address above</li>
+                <li>Send at least 1 SOL to this address from your main wallet or exchange</li>
+                <li>Wait for the backend system to detect and update your balance</li>
+                <li>Click "Check Balance" to refresh your balance from our database</li>
+                <li>Once you have ≥1 SOL, you can create bundlers</li>
+              </ol>
+              <div class="funding-note">
+                <span class="material-symbols-outlined">info</span>
+                <span>Balance updates are managed by our backend system and may take a few minutes to reflect.</span>
+              </div>
+            </div>
+            <div class="funding-actions">
+              <button id="check-balance-btn" class="primary-button">
+                <span class="material-symbols-outlined">refresh</span>
+                Check Balance
+              </button>
+              <button id="copy-address-btn" class="secondary-button" onclick="copyInAppAddress()">
+                <span class="material-symbols-outlined">content_copy</span>
+                Copy Address
+              </button>
+            </div>
+            <div id="balance-warning" class="warning-message" style="display: none;">
+              <span class="material-symbols-outlined">warning</span>
+              <span>You need at least 1 SOL to create bundlers</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    // Insert after wallet status section
+    const walletStatus = document.getElementById('wallet-status');
+    walletStatus.parentNode.insertBefore(fundingPrompt, walletStatus.nextSibling);
+    
+    // Add event listeners
+    document.getElementById('check-balance-btn').addEventListener('click', handleCheckBalance);
+  }
+  
+  // Update wallet info if user exists
+  if (currentUser) {
+    const addressEl = document.getElementById('funding-wallet-address');
+    const balanceEl = document.getElementById('funding-current-balance');
+    
+    if (addressEl) addressEl.textContent = DatabaseAPI.truncateAddress(currentUser.in_app_public_key);
+    if (balanceEl) balanceEl.textContent = `${DatabaseAPI.formatBalance(currentUser.balance_sol)} SOL`;
+  }
+  
+  fundingPrompt.style.display = 'block';
+}
+
+/**
+ * Hide funding prompt
+ */
+function hideFundingPrompt() {
+  const fundingPrompt = document.getElementById('funding-prompt');
+  if (fundingPrompt) {
+    fundingPrompt.style.display = 'none';
   }
 }
 
@@ -636,11 +849,10 @@ async function handleCreateWallet() {
       const userRegistered = await checkUserRegistration();
       
       if (userRegistered) {
-        // User is now registered, hide prompt and show dashboard
+        // User is now registered, hide registration prompt and show funding prompt
         hideRegistrationPrompt();
-        await loadDashboardData();
-        setupRealtimeSubscriptions();
-        showSnackbar('Welcome to Solanafied! Your account is ready.', 'success');
+        showFundingPrompt();
+        showSnackbar('Welcome to Solanafied! Please fund your in-app wallet to start creating bundlers.', 'success');
       } else {
         // Something went wrong, ask user to refresh
         showSnackbar('Wallet created but registration not confirmed. Please refresh.', 'warning');
@@ -716,11 +928,21 @@ async function handleRefreshRegistration() {
     const userRegistered = await checkUserRegistration();
     
     if (userRegistered) {
-      // User is now registered, hide prompt and show dashboard
+      // User is now registered, check balance and show appropriate UI
+      const balance = currentUser.balance_sol || 0;
+      
       hideRegistrationPrompt();
-      await loadDashboardData();
-      setupRealtimeSubscriptions();
-      showSnackbar('Registration confirmed! Welcome to Solanafied!', 'success');
+      
+      if (balance >= 1) {
+        // User has sufficient balance, load full dashboard
+        await loadDashboardData();
+        setupRealtimeSubscriptions();
+        showSnackbar('Registration confirmed! Welcome to Solanafied!', 'success');
+      } else {
+        // User has in-app wallet but insufficient balance
+        showFundingPrompt();
+        showSnackbar(`Registration confirmed! Please fund your in-app wallet (${DatabaseAPI.formatBalance(balance)} SOL). You need ≥1 SOL to create bundlers.`, 'warning');
+      }
     } else {
       showSnackbar('User still not registered. Please create your in-app wallet first.', 'warning');
     }
@@ -728,6 +950,62 @@ async function handleRefreshRegistration() {
   } catch (error) {
     console.error('❌ Failed to refresh registration:', error);
     showSnackbar('Failed to check registration status', 'error');
+  }
+}
+
+/**
+ * Handle balance check for funding prompt
+ */
+async function handleCheckBalance() {
+  try {
+    if (!currentUser) {
+      throw new Error('No user logged in');
+    }
+    
+    showLoadingOverlay(true, 'Checking balance from database...');
+    
+    // Update balance from database
+    const newBalance = await updateInAppWalletBalance();
+    
+    // Update UI
+    const balanceEl = document.getElementById('funding-current-balance');
+    if (balanceEl) {
+      balanceEl.textContent = `${DatabaseAPI.formatBalance(newBalance)} SOL`;
+    }
+    
+    if (newBalance >= 1) {
+      // User now has sufficient balance
+      hideFundingPrompt();
+      await loadDashboardData();
+      setupRealtimeSubscriptions();
+      showSnackbar(`Great! Your balance is now ${DatabaseAPI.formatBalance(newBalance)} SOL. You can create bundlers!`, 'success');
+    } else {
+      showSnackbar(`Balance updated: ${DatabaseAPI.formatBalance(newBalance)} SOL. You still need ≥1 SOL to create bundlers.`, 'info');
+    }
+    
+  } catch (error) {
+    console.error('❌ Failed to check balance:', error);
+    showSnackbar('Failed to check balance', 'error');
+  } finally {
+    showLoadingOverlay(false);
+  }
+}
+
+/**
+ * Copy in-app wallet address to clipboard
+ */
+async function copyInAppAddress() {
+  try {
+    if (!currentUser || !currentUser.in_app_public_key) {
+      throw new Error('No in-app wallet address available');
+    }
+    
+    await navigator.clipboard.writeText(currentUser.in_app_public_key);
+    showSnackbar('In-app wallet address copied to clipboard', 'success');
+    
+  } catch (error) {
+    console.error('❌ Failed to copy address:', error);
+    showSnackbar('Failed to copy address', 'error');
   }
 }
 
@@ -1029,6 +1307,8 @@ window.SolanafiedApp = {
   checkUserRegistration,
   handleCreateWallet,
   handleRefreshRegistration,
+  handleCheckBalance,
+  copyInAppAddress,
   pollForWalletCreation,
   toggleBundlerStatus,
   createBundler,
