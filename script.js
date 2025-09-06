@@ -652,14 +652,14 @@ function showFundingPrompt() {
             </div>
             <div class="balance-item">
               <label>Required for Bundlers:</label>
-              <span class="balance-value required">1+ SOL</span>
+              <span class="balance-value required">≥1 SOL</span>
             </div>
           </div>
           
           <div class="funding-instructions">
             <h5>To create bundlers, you need:</h5>
             <ul class="requirements-list">
-              <li>More than 1 SOL in your in-app wallet</li>
+              <li>At least 1 SOL in your in-app wallet</li>
               <li>Additional SOL for each bundler you create</li>
               <li>Each bundler requires integer amounts (1, 2, 3 SOL, etc.)</li>
             </ul>
@@ -763,9 +763,9 @@ async function createBundler() {
       return;
     }
     
-    // Check if user has sufficient balance (must be > 1 SOL as per workflow)
-    if (parseFloat(currentUser.balance_sol) <= 1) {
-      showSnackbar('You need more than 1 SOL to create a bundler. Please fund your in-app wallet first.', 'warning');
+    // Check if user has sufficient balance (must be >= 1 SOL as per workflow)
+    if (parseFloat(currentUser.balance_sol) < 1) {
+      showSnackbar('You need at least 1 SOL to create a bundler. Please fund your in-app wallet first.', 'warning');
       showFundingPrompt();
       return;
     }
@@ -967,17 +967,100 @@ async function verifyBalance() {
       return;
     }
     
+    showLoadingOverlay(true, 'Verifying balance...');
+    
     const result = await OrchestratorAPI.verifyInAppBalance(currentUser.user_wallet_id);
     
     if (result && result.balanceUpdated) {
-      // Refresh user data
+      // Refresh user data to get updated balance
       await refreshUserData();
       await loadDashboardData();
+      
+      // Check if balance now meets bundler creation requirements
+      const newBalance = parseFloat(result.currentBalance);
+      
+      if (newBalance >= 1) {
+        showSnackbar(`Balance verified: ${result.currentBalance} SOL - You can now create bundlers!`, 'success');
+        
+        // Show bundler creation prompt if balance is sufficient
+        showBundlerCreationAvailable(newBalance);
+      } else {
+        showSnackbar(`Balance verified: ${result.currentBalance} SOL - Need at least 1 SOL for bundlers`, 'info');
+      }
+    } else if (result) {
+      showSnackbar(`Balance unchanged: ${result.currentBalance} SOL`, 'info');
     }
     
   } catch (error) {
     console.error('❌ Failed to verify balance:', error);
     showSnackbar('Failed to verify balance', 'error');
+  } finally {
+    showLoadingOverlay(false);
+  }
+}
+
+/**
+ * Show bundler creation available prompt
+ */
+function showBundlerCreationAvailable(balance) {
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.id = 'bundler-available-modal';
+  
+  modal.innerHTML = `
+    <div class="modal-content">
+      <div class="modal-header">
+        <span class="material-symbols-outlined" style="color: var(--md-sys-color-success);">check_circle</span>
+        <h3>Ready to Create Bundlers!</h3>
+      </div>
+      <div class="modal-body">
+        <div class="bundler-available-content">
+          <div class="success-icon">
+            <span class="material-symbols-outlined">inventory_2</span>
+          </div>
+          <h4>Your wallet is funded!</h4>
+          <p>You now have sufficient balance to create bundlers and start token operations.</p>
+          
+          <div class="balance-display-large">
+            <label>Available Balance:</label>
+            <span class="balance-value">${DatabaseAPI.formatBalance(balance)} SOL</span>
+          </div>
+          
+          <div class="bundler-info">
+            <h5>Bundler Creation Rules:</h5>
+            <ul class="info-list">
+              <li><strong>Integer amounts only:</strong> 1, 2, 3, 4 SOL, etc.</li>
+              <li><strong>Dev wallet purpose:</strong> Each bundler becomes a dev wallet for token creation</li>
+              <li><strong>Mother wallet allocation:</strong> 1 SOL = 1 mother wallet assigned</li>
+              <li><strong>Child wallet distribution:</strong> Each mother wallet has 4 child wallets</li>
+            </ul>
+          </div>
+          
+          <div class="modal-actions">
+            <button class="secondary-button" onclick="closeBundlerAvailableModal()">
+              <span class="material-symbols-outlined">close</span>
+              Later
+            </button>
+            <button class="primary-button" onclick="closeBundlerAvailableModal(); createBundler();">
+              <span class="material-symbols-outlined">inventory_2</span>
+              Create Bundler
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+}
+
+/**
+ * Close bundler available modal
+ */
+function closeBundlerAvailableModal() {
+  const modal = document.getElementById('bundler-available-modal');
+  if (modal) {
+    modal.remove();
   }
 }
 
