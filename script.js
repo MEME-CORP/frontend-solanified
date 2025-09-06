@@ -628,6 +628,88 @@ async function copyToClipboard(text) {
 }
 
 /**
+ * Generate UUID for idempotency key
+ */
+function generateIdempotencyKey() {
+  return 'bundler_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+}
+
+/**
+ * Show bundler creation success details
+ */
+function showBundlerCreationSuccess(result) {
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.id = 'bundler-success-modal';
+  
+  modal.innerHTML = `
+    <div class="modal-content">
+      <div class="modal-header">
+        <span class="material-symbols-outlined" style="color: var(--md-sys-color-success);">check_circle</span>
+        <h3>Bundler Created Successfully!</h3>
+      </div>
+      <div class="modal-body">
+        <div class="bundler-success-content">
+          <div class="success-icon">
+            <span class="material-symbols-outlined">inventory_2</span>
+          </div>
+          <h4>Your bundler is ready for token creation!</h4>
+          <p>The bundler has been created and mother wallets have been allocated and funded.</p>
+          
+          <div class="bundler-details">
+            <div class="detail-row">
+              <label>Bundler ID:</label>
+              <span class="detail-value">#${result.bundlerId}</span>
+            </div>
+            <div class="detail-row">
+              <label>Total Balance:</label>
+              <span class="detail-value">${result.totalBalanceSol} SOL</span>
+            </div>
+            <div class="detail-row">
+              <label>Mother Wallets Allocated:</label>
+              <span class="detail-value">${result.allocatedMotherWallets?.length || 0}</span>
+            </div>
+          </div>
+          
+          <div class="next-steps">
+            <h5>What happens next:</h5>
+            <ul class="steps-list">
+              <li>✅ Mother wallets have been funded with 1 SOL each</li>
+              <li>✅ Child wallets have been distributed with randomized amounts</li>
+              <li>✅ Your bundler is now active and ready for token creation</li>
+              <li>🎯 You can now create tokens on Pump.fun using this bundler</li>
+            </ul>
+          </div>
+          
+          <div class="modal-actions">
+            <button class="secondary-button" onclick="closeBundlerSuccessModal()">
+              <span class="material-symbols-outlined">close</span>
+              Close
+            </button>
+            <button class="primary-button" onclick="closeBundlerSuccessModal(); addToken();">
+              <span class="material-symbols-outlined">token</span>
+              Create Token
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+}
+
+/**
+ * Close bundler success modal
+ */
+function closeBundlerSuccessModal() {
+  const modal = document.getElementById('bundler-success-modal');
+  if (modal) {
+    modal.remove();
+  }
+}
+
+/**
  * Show funding prompt when user needs to add SOL
  */
 function showFundingPrompt() {
@@ -784,13 +866,30 @@ async function createBundler() {
       return;
     }
     
+    // Generate idempotency key for reliability
+    const idempotencyKey = generateIdempotencyKey();
+    
+    console.log('📤 [BUNDLER_CREATION] Sending request to orchestrator:', {
+      user_wallet_id: currentUser.user_wallet_id,
+      bundler_balance: balance,
+      idempotency_key: idempotencyKey
+    });
+    
     // Create bundler via orchestrator
-    const result = await OrchestratorAPI.createBundler(currentUser.user_wallet_id, balance);
+    const result = await OrchestratorAPI.createBundler(currentUser.user_wallet_id, balance, idempotencyKey);
     
     if (result) {
+      console.log('✅ [BUNDLER_CREATION] Success response:', result);
+      
+      // Show success message with details
+      showSnackbar(`Bundler created successfully! Allocated ${result.allocatedMotherWallets?.length || 'N/A'} mother wallets`, 'success');
+      
       // Refresh data
       await refreshUserData();
       await loadBundlers();
+      
+      // Show bundler creation success details
+      showBundlerCreationSuccess(result);
     }
     
   } catch (error) {

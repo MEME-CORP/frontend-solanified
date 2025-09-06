@@ -1213,6 +1213,73 @@ body::before {
   color: var(--md-sys-color-on-surface);
 }
 
+/* Bundler Success Modal */
+.bundler-success-content {
+  text-align: center;
+}
+
+.bundler-details {
+  margin: var(--spacing-xl) 0;
+  padding: var(--spacing-lg);
+  background-color: var(--md-sys-color-surface-container-high);
+  border-radius: var(--radius-md);
+  text-align: left;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-sm);
+  padding: var(--spacing-sm) 0;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.detail-row:last-child {
+  margin-bottom: 0;
+  border-bottom: none;
+}
+
+.detail-row label {
+  font: var(--md-sys-typescale-label-medium);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.detail-value {
+  font: var(--md-sys-typescale-body-medium);
+  color: var(--md-sys-color-on-surface);
+  font-weight: 600;
+}
+
+.next-steps {
+  text-align: left;
+  margin: var(--spacing-xl) 0;
+  padding: var(--spacing-lg);
+  background-color: var(--md-sys-color-surface-container-low);
+  border-radius: var(--radius-md);
+  border-left: 4px solid var(--md-sys-color-success);
+}
+
+.next-steps h5 {
+  font: var(--md-sys-typescale-title-small);
+  color: var(--md-sys-color-on-surface);
+  margin-bottom: var(--spacing-md);
+}
+
+.next-steps .steps-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.next-steps .steps-list li {
+  font: var(--md-sys-typescale-body-medium);
+  margin-bottom: var(--spacing-sm);
+  line-height: 1.5;
+  padding-left: var(--spacing-sm);
+}
+
 /* ========== FEEDBACK COMPONENTS ========== */
 
 /* Loading States */
