@@ -371,13 +371,12 @@ async function loadDashboardData() {
   if (!currentUser || !DatabaseAPI) return;
   
   try {
-    // Update user ID display
-    document.getElementById('user-id').textContent = DatabaseAPI.truncateAddress(currentUser.user_wallet_id);
+    // Update in-app public key display
+    document.getElementById('in-app-public-key').textContent = DatabaseAPI.truncateAddress(currentUser.in_app_public_key);
     
     // Load data in parallel
     await Promise.all([
       loadBundlers(),
-      loadMotherWallets(),
       loadTokens()
     ]);
     
@@ -445,56 +444,6 @@ async function loadBundlers() {
   }
 }
 
-/**
- * Load mother wallets data
- */
-async function loadMotherWallets(filter = 'all') {
-  try {
-    const walletsList = document.getElementById('mother-wallets-list');
-    walletsList.innerHTML = '<div class="loading-state"><div class="spinner"></div><span>Loading wallets...</span></div>';
-    
-    const wallets = await DatabaseAPI.getMotherWallets(filter);
-    
-    if (wallets.length === 0) {
-      walletsList.innerHTML = `
-        <div class="empty-state">
-          <span class="material-symbols-outlined">folder</span>
-          <p>No ${filter === 'all' ? '' : filter} wallets found</p>
-        </div>
-      `;
-      return;
-    }
-    
-    walletsList.innerHTML = wallets.map(wallet => `
-      <div class="list-item" data-wallet-id="${wallet.id}">
-        <div class="list-item-icon">
-          <span class="material-symbols-outlined">folder</span>
-        </div>
-        <div class="list-item-content">
-          <div class="list-item-title">${DatabaseAPI.truncateAddress(wallet.public_key)}</div>
-          <div class="list-item-subtitle">
-            Balance: ${DatabaseAPI.formatBalance(wallet.balance_sol)} SOL
-          </div>
-        </div>
-        <div class="list-item-trailing">
-          <span class="status-chip ${wallet.is_available ? 'available' : 'assigned'}">
-            ${wallet.is_available ? 'Available' : 'Assigned'}
-          </span>
-        </div>
-      </div>
-    `).join('');
-    
-  } catch (error) {
-    console.error('❌ Failed to load mother wallets:', error);
-    document.getElementById('mother-wallets-list').innerHTML = `
-      <div class="error-state">
-        <span class="material-symbols-outlined">error</span>
-        <p>Failed to load wallets</p>
-        <button onclick="loadMotherWallets('${filter}')" class="retry-btn">Retry</button>
-      </div>
-    `;
-  }
-}
 
 /**
  * Load tokens data
@@ -1118,13 +1067,6 @@ function setupRealtimeSubscriptions() {
     
     if (bundlerSub) subscriptions.push(bundlerSub);
     
-    // Subscribe to mother wallet changes
-    const walletSub = DatabaseAPI.subscribeToMotherWalletChanges((payload) => {
-      console.log('📡 Mother wallet update received:', payload);
-      loadMotherWallets(); // Refresh wallets list
-    });
-    
-    if (walletSub) subscriptions.push(walletSub);
     
     console.log('✅ Real-time subscriptions set up');
     
@@ -1184,27 +1126,6 @@ function toggleFabMenu() {
   icon.style.transform = fabMenu.classList.contains('open') ? 'rotate(45deg)' : 'rotate(0deg)';
 }
 
-// ========== FILTER HANDLING ==========
-
-/**
- * Handle filter chip clicks
- */
-function handleFilterClick(event) {
-  if (!event.target.classList.contains('chip')) return;
-  
-  const filterChips = event.target.parentElement;
-  const allChips = filterChips.querySelectorAll('.chip');
-  
-  // Remove active class from all chips
-  allChips.forEach(chip => chip.classList.remove('active'));
-  
-  // Add active class to clicked chip
-  event.target.classList.add('active');
-  
-  // Get filter value and reload data
-  const filter = event.target.getAttribute('data-filter');
-  loadMotherWallets(filter);
-}
 
 // ========== EVENT LISTENERS ==========
 
@@ -1221,8 +1142,6 @@ function setupEventListeners() {
   // FAB menu
   document.getElementById('main-fab').addEventListener('click', toggleFabMenu);
   
-  // Filter chips
-  document.querySelector('.filter-chips').addEventListener('click', handleFilterClick);
   
   // Snackbar dismiss
   document.querySelector('.snackbar-action').addEventListener('click', () => {
