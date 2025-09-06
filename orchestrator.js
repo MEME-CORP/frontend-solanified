@@ -7,7 +7,7 @@
 
 // ========== ORCHESTRATOR CONFIGURATION ==========
 
-const ORCHESTRATOR_BASE_URL = 'https://bundler-orchestrator-backend.vercel.app';
+const ORCHESTRATOR_BASE_URL = 'https://orquestador-solanified.onrender.com';
 const API_TIMEOUT = 30000; // 30 seconds for most operations
 const LONG_API_TIMEOUT = 120000; // 2 minutes for token creation operations
 
