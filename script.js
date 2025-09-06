@@ -635,6 +635,30 @@ function generateIdempotencyKey() {
 }
 
 /**
+ * Test orchestrator connection
+ */
+async function testOrchestratorConnection() {
+  try {
+    console.log('🧪 [TEST] Testing orchestrator connection...');
+    console.log('🧪 [TEST] ORCHESTRATOR_BASE_URL:', window.OrchestratorAPI?.makeOrchestratorRequest ? 'Available' : 'Not Available');
+    
+    // Try a simple request to test the connection
+    const testUrl = 'https://orquestador-solanified.onrender.com';
+    const response = await fetch(testUrl);
+    console.log('🧪 [TEST] Base URL response status:', response.status);
+    
+    if (response.ok) {
+      showSnackbar('Orchestrator connection successful!', 'success');
+    } else {
+      showSnackbar('Orchestrator connection failed - HTTP ' + response.status, 'error');
+    }
+  } catch (error) {
+    console.error('🧪 [TEST] Orchestrator connection error:', error);
+    showSnackbar('Orchestrator connection error: ' + error.message, 'error');
+  }
+}
+
+/**
  * Show bundler creation success details
  */
 function showBundlerCreationSuccess(result) {
@@ -840,8 +864,26 @@ async function toggleBundlerStatus(bundlerId, newStatus) {
  */
 async function createBundler() {
   try {
-    if (!currentUser || !OrchestratorAPI) {
+    console.log('🚀 [DEBUG] createBundler called');
+    console.log('🚀 [DEBUG] currentUser:', currentUser);
+    console.log('🚀 [DEBUG] OrchestratorAPI:', OrchestratorAPI);
+    console.log('🚀 [DEBUG] OrchestratorAPI.createBundler:', typeof OrchestratorAPI?.createBundler);
+    
+    if (!currentUser) {
+      console.log('❌ [DEBUG] No currentUser found');
       showSnackbar('Please create an in-app wallet first', 'warning');
+      return;
+    }
+    
+    if (!OrchestratorAPI) {
+      console.log('❌ [DEBUG] OrchestratorAPI not available');
+      showSnackbar('Orchestrator API not available', 'error');
+      return;
+    }
+    
+    if (typeof OrchestratorAPI.createBundler !== 'function') {
+      console.log('❌ [DEBUG] OrchestratorAPI.createBundler is not a function');
+      showSnackbar('Bundler creation function not available', 'error');
       return;
     }
     
@@ -876,7 +918,15 @@ async function createBundler() {
     });
     
     // Create bundler via orchestrator
+    console.log('📤 [DEBUG] About to call OrchestratorAPI.createBundler with:', {
+      userWalletId: currentUser.user_wallet_id,
+      balance: balance,
+      idempotencyKey: idempotencyKey
+    });
+    
     const result = await OrchestratorAPI.createBundler(currentUser.user_wallet_id, balance, idempotencyKey);
+    
+    console.log('📥 [DEBUG] OrchestratorAPI.createBundler returned:', result);
     
     if (result) {
       console.log('✅ [BUNDLER_CREATION] Success response:', result);
@@ -890,6 +940,9 @@ async function createBundler() {
       
       // Show bundler creation success details
       showBundlerCreationSuccess(result);
+    } else {
+      console.log('❌ [DEBUG] OrchestratorAPI.createBundler returned null/falsy result');
+      showSnackbar('Failed to create bundler - no response from server', 'error');
     }
     
   } catch (error) {

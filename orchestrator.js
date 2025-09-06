@@ -146,6 +146,7 @@ async function verifyInAppBalance(userWalletId) {
  */
 async function createBundler(userWalletId, bundlerBalance, idempotencyKey = null) {
   try {
+    console.log('🔧 [ORCHESTRATOR] createBundler called with:', { userWalletId, bundlerBalance, idempotencyKey });
     showLoadingOverlay(true, 'Creating bundler...');
     
     const requestData = {
@@ -156,6 +157,9 @@ async function createBundler(userWalletId, bundlerBalance, idempotencyKey = null
     if (idempotencyKey) {
       requestData.idempotency_key = idempotencyKey;
     }
+    
+    console.log('📡 [ORCHESTRATOR] About to make request with data:', requestData);
+    console.log('📡 [ORCHESTRATOR] Request URL:', `${ORCHESTRATOR_BASE_URL}/api/orchestrator/create-bundler`);
     
     const response = await makeOrchestratorRequest('/api/orchestrator/create-bundler', 'POST', requestData);
     
