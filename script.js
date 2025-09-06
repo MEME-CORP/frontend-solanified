@@ -710,6 +710,208 @@ function closeBundlerSuccessModal() {
 }
 
 /**
+ * Show bundler balance input modal with integer validation
+ */
+function showBundlerBalanceInput() {
+  return new Promise((resolve) => {
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.id = 'bundler-balance-modal';
+    
+    const maxBalance = Math.floor(parseFloat(currentUser.balance_sol));
+    
+    modal.innerHTML = `
+      <div class="modal-content">
+        <div class="modal-header">
+          <span class="material-symbols-outlined">inventory_2</span>
+          <h3>Create Bundler</h3>
+        </div>
+        <div class="modal-body">
+          <div class="bundler-balance-input">
+            <p>Enter the SOL amount for your bundler (integers only)</p>
+            
+            <div class="balance-info">
+              <div class="info-row">
+                <label>Available Balance:</label>
+                <span class="balance-value">${currentUser.balance_sol} SOL</span>
+              </div>
+              <div class="info-row">
+                <label>Maximum Allowed:</label>
+                <span class="balance-value">${maxBalance} SOL</span>
+              </div>
+              <div class="info-row">
+                <label>Minimum Required:</label>
+                <span class="balance-value">1 SOL</span>
+              </div>
+            </div>
+            
+            <div class="form-group">
+              <label for="bundler-balance-input">Bundler Balance (SOL)</label>
+              <input 
+                type="number" 
+                id="bundler-balance-input" 
+                min="1" 
+                max="${maxBalance}" 
+                step="1" 
+                placeholder="Enter integer value (e.g., 3)"
+                class="balance-input"
+              />
+              <div class="input-help">
+                Only whole numbers (integers) are allowed
+              </div>
+              <div class="error-message" id="balance-error" style="display: none;"></div>
+            </div>
+            
+            <div class="modal-actions">
+              <button class="secondary-button" onclick="closeBundlerBalanceModal(); resolve(null);">
+                <span class="material-symbols-outlined">close</span>
+                Cancel
+              </button>
+              <button class="primary-button" onclick="validateAndSubmitBalance()">
+                <span class="material-symbols-outlined">add</span>
+                Create Bundler
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // Focus on input
+    setTimeout(() => {
+      const input = document.getElementById('bundler-balance-input');
+      if (input) {
+        input.focus();
+        
+        // Add real-time validation
+        input.addEventListener('input', function() {
+          validateBundlerBalanceInput();
+        });
+        
+        // Handle Enter key
+        input.addEventListener('keypress', function(e) {
+          if (e.key === 'Enter') {
+            validateAndSubmitBalance();
+          }
+        });
+      }
+    }, 100);
+    
+    // Store resolve function globally for button handlers
+    window.bundlerBalanceResolve = resolve;
+  });
+}
+
+/**
+ * Validate bundler balance input in real-time
+ */
+function validateBundlerBalanceInput() {
+  const input = document.getElementById('bundler-balance-input');
+  const errorDiv = document.getElementById('balance-error');
+  const submitBtn = document.querySelector('#bundler-balance-modal .primary-button');
+  
+  if (!input || !errorDiv || !submitBtn) return;
+  
+  const value = input.value.trim();
+  const maxBalance = Math.floor(parseFloat(currentUser.balance_sol));
+  
+  // Clear previous error
+  errorDiv.style.display = 'none';
+  errorDiv.textContent = '';
+  input.classList.remove('error');
+  submitBtn.disabled = false;
+  
+  if (!value) {
+    return; // Empty is okay, we'll validate on submit
+  }
+  
+  // Check if it's a valid integer
+  if (!/^[0-9]+$/.test(value)) {
+    showInputError('Only whole numbers (integers) are allowed');
+    return;
+  }
+  
+  const balance = parseInt(value);
+  
+  // Check minimum
+  if (balance < 1) {
+    showInputError('Minimum bundler balance is 1 SOL');
+    return;
+  }
+  
+  // Check maximum
+  if (balance > maxBalance) {
+    showInputError(`Maximum available balance is ${maxBalance} SOL`);
+    return;
+  }
+  
+  function showInputError(message) {
+    errorDiv.textContent = message;
+    errorDiv.style.display = 'block';
+    input.classList.add('error');
+    submitBtn.disabled = true;
+  }
+}
+
+/**
+ * Validate and submit bundler balance
+ */
+function validateAndSubmitBalance() {
+  const input = document.getElementById('bundler-balance-input');
+  if (!input) return;
+  
+  const value = input.value.trim();
+  const maxBalance = Math.floor(parseFloat(currentUser.balance_sol));
+  
+  if (!value) {
+    showSnackbar('Please enter a bundler balance', 'warning');
+    return;
+  }
+  
+  if (!/^[0-9]+$/.test(value)) {
+    showSnackbar('Only whole numbers (integers) are allowed', 'error');
+    return;
+  }
+  
+  const balance = parseInt(value);
+  
+  if (balance < 1) {
+    showSnackbar('Minimum bundler balance is 1 SOL', 'error');
+    return;
+  }
+  
+  if (balance > maxBalance) {
+    showSnackbar(`Maximum available balance is ${maxBalance} SOL`, 'error');
+    return;
+  }
+  
+  // Valid balance, close modal and resolve
+  closeBundlerBalanceModal();
+  if (window.bundlerBalanceResolve) {
+    window.bundlerBalanceResolve(balance);
+    window.bundlerBalanceResolve = null;
+  }
+}
+
+/**
+ * Close bundler balance input modal
+ */
+function closeBundlerBalanceModal() {
+  const modal = document.getElementById('bundler-balance-modal');
+  if (modal) {
+    modal.remove();
+  }
+  
+  // Clean up resolve function
+  if (window.bundlerBalanceResolve) {
+    window.bundlerBalanceResolve(null);
+    window.bundlerBalanceResolve = null;
+  }
+}
+
+/**
  * Show funding prompt when user needs to add SOL
  */
 function showFundingPrompt() {
@@ -858,19 +1060,9 @@ async function createBundler() {
       return;
     }
     
-    const bundlerBalance = prompt(`Enter bundler balance (SOL):\n\nAvailable: ${currentUser.balance_sol} SOL\nMinimum: 1 SOL`);
-    if (!bundlerBalance || isNaN(bundlerBalance)) return;
-    
-    const balance = parseInt(bundlerBalance);
-    if (balance < 1) {
-      showSnackbar('Minimum bundler balance is 1 SOL', 'error');
-      return;
-    }
-    
-    if (balance > parseFloat(currentUser.balance_sol)) {
-      showSnackbar('Insufficient balance in your in-app wallet', 'error');
-      return;
-    }
+    // Show bundler balance input modal
+    const balance = await showBundlerBalanceInput();
+    if (!balance) return; // User cancelled or invalid input
     
     // Generate idempotency key for reliability
     const idempotencyKey = generateIdempotencyKey();

@@ -27,7 +27,6 @@ async function makeOrchestratorRequest(endpoint, method = 'POST', data = null, t
       method,
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json',
       },
       signal: controller.signal
     };
@@ -119,7 +118,7 @@ async function createInAppWallet(userWalletId) {
   try {
     showLoadingOverlay(true, 'Creating in-app wallet...');
     
-    const response = await makeOrchestratorRequest('/api/orchestrator/create-wallet-in-app', 'POST', {
+    const response = await makeOrchestratorRequest('/create-wallet-in-app', 'POST', {
       user_wallet_id: userWalletId
     });
     
@@ -144,7 +143,7 @@ async function createInAppWallet(userWalletId) {
  */
 async function verifyInAppBalance(userWalletId) {
   try {
-    const response = await makeOrchestratorRequest('/api/orchestrator/verify-in-app-sol-balance', 'POST', {
+    const response = await makeOrchestratorRequest('/verify-in-app-sol-balance', 'POST', {
       user_wallet_id: userWalletId
     });
     
@@ -179,16 +178,14 @@ async function createBundler(userWalletId, bundlerBalance, idempotencyKey = null
     
     const requestData = {
       user_wallet_id: userWalletId,
-      bundler_balance: parseInt(bundlerBalance) // Ensure it's an integer
+      bundler_balance: parseInt(bundlerBalance)
     };
     
     if (idempotencyKey) {
       requestData.idempotency_key = idempotencyKey;
     }
     
-    console.log('🔍 [BUNDLER] Final request data being sent:', requestData);
-    
-    const response = await makeOrchestratorRequest('/api/orchestrator/create-bundler', 'POST', requestData);
+    const response = await makeOrchestratorRequest('/create-bundler', 'POST', requestData);
     
     console.log('✅ Bundler created successfully:', response);
     showSnackbar(`Bundler created with ${response.total_balance_sol} SOL!`, 'success');
@@ -232,7 +229,7 @@ async function createAndBuyToken(userWalletId, tokenData) {
     };
     
     const response = await makeOrchestratorRequest(
-      '/api/orchestrator/create-and-buy-token-pumpFun', 
+      '/create-and-buy-token-pumpFun', 
       'POST', 
       requestData, 
       LONG_API_TIMEOUT
@@ -258,7 +255,7 @@ async function sellToken(userWalletId, sellPercent) {
   try {
     showLoadingOverlay(true, `Selling ${sellPercent}% of tokens...`);
     
-    const response = await makeOrchestratorRequest('/api/orchestrator/sell-created-token', 'POST', {
+    const response = await makeOrchestratorRequest('/sell-created-token', 'POST', {
       user_wallet_id: userWalletId,
       sell_percent: sellPercent
     });
@@ -285,7 +282,7 @@ async function transferToOwner(userWalletId, amountSol) {
   try {
     showLoadingOverlay(true, `Transferring ${amountSol} SOL to your wallet...`);
     
-    const response = await makeOrchestratorRequest('/api/orchestrator/transfer-to-owner-wallet', 'POST', {
+    const response = await makeOrchestratorRequest('/transfer-to-owner-wallet', 'POST', {
       user_wallet_id: userWalletId,
       amount_sol: amountSol.toString()
     });
@@ -412,11 +409,6 @@ window.OrchestratorAPI = {
 console.log('🔗 Orchestrator API loaded successfully');
 console.log('🔗 Base URL:', ORCHESTRATOR_BASE_URL);
 console.log('🔗 Available functions:', Object.keys(window.OrchestratorAPI || {}));
-
-// Test basic connectivity
-fetch(ORCHESTRATOR_BASE_URL, { method: 'HEAD', mode: 'no-cors' })
-  .then(() => console.log('✅ Basic connectivity to orchestrator: OK'))
-  .catch(err => console.log('❌ Basic connectivity to orchestrator: FAILED', err.message));
 
 // Auto-setup notification listener when DOM is ready
 if (document.readyState === 'loading') {

@@ -1280,6 +1280,100 @@ body::before {
   padding-left: var(--spacing-sm);
 }
 
+/* Bundler Balance Input Modal */
+.bundler-balance-input {
+  text-align: center;
+}
+
+.balance-info {
+  margin: var(--spacing-lg) 0;
+  padding: var(--spacing-md);
+  background-color: var(--md-sys-color-surface-container-low);
+  border-radius: var(--radius-md);
+  text-align: left;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-sm);
+  padding: var(--spacing-xs) 0;
+}
+
+.info-row:last-child {
+  margin-bottom: 0;
+}
+
+.info-row label {
+  font: var(--md-sys-typescale-body-medium);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.info-row .balance-value {
+  font: var(--md-sys-typescale-body-medium);
+  color: var(--md-sys-color-on-surface);
+  font-weight: 600;
+}
+
+.balance-input {
+  width: 100%;
+  padding: var(--spacing-md);
+  font: var(--md-sys-typescale-body-large);
+  color: var(--md-sys-color-on-surface);
+  background-color: var(--md-sys-color-surface-container-highest);
+  border: 2px solid var(--md-sys-color-outline);
+  border-radius: var(--radius-sm);
+  text-align: center;
+  font-size: 18px;
+  font-weight: 600;
+  transition: all var(--duration-short2) var(--easing-standard);
+}
+
+.balance-input:focus {
+  outline: none;
+  border-color: var(--md-sys-color-primary);
+  background-color: var(--md-sys-color-surface-container-high);
+}
+
+.balance-input.error {
+  border-color: var(--md-sys-color-error);
+  background-color: var(--md-sys-color-error-container);
+}
+
+.balance-input::placeholder {
+  color: var(--md-sys-color-on-surface-variant);
+  opacity: 0.7;
+}
+
+.input-help {
+  margin-top: var(--spacing-xs);
+  font: var(--md-sys-typescale-body-small);
+  color: var(--md-sys-color-on-surface-variant);
+  text-align: center;
+}
+
+.error-message {
+  margin-top: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font: var(--md-sys-typescale-body-small);
+  color: var(--md-sys-color-error);
+  background-color: var(--md-sys-color-error-container);
+  border-radius: var(--radius-xs);
+  text-align: center;
+}
+
+/* Remove spinner arrows from number input */
+.balance-input::-webkit-outer-spin-button,
+.balance-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.balance-input[type=number] {
+  -moz-appearance: textfield;
+}
+
 /* ========== FEEDBACK COMPONENTS ========== */
 
 /* Loading States */
