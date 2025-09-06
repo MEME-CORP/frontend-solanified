@@ -885,24 +885,29 @@ async function handleCreateWallet() {
 }
 
 /**
- * Poll for wallet creation completion
+ * Poll for wallet creation completion using backend notifications
  */
 async function pollForWalletCreation(walletAddress, timeout = 30000) {
   const startTime = Date.now();
   const pollInterval = 2000; // Poll every 2 seconds
   
-  console.log('🔄 Starting to poll for wallet creation completion...');
+  console.log('🔄 Starting to poll for wallet creation notifications...');
   
   while (Date.now() - startTime < timeout) {
     try {
       // Update loading message
       showLoadingOverlay(true, 'Waiting for wallet creation to complete...');
       
-      // Check if user is now registered (which means wallet was created successfully)
-      const userRegistered = await checkUserRegistration();
+      // Check for notifications from backend
+      const notifications = await checkForNotifications(walletAddress);
       
-      if (userRegistered) {
-        console.log('✅ Wallet creation completed successfully!');
+      // Look for wallet creation notification
+      const walletCreatedNotification = notifications.find(n => 
+        n.type === 'WALLET_CREATED' && n.user_wallet_id === walletAddress
+      );
+      
+      if (walletCreatedNotification) {
+        console.log('✅ Wallet creation notification received!', walletCreatedNotification);
         return true;
       }
       
@@ -910,14 +915,39 @@ async function pollForWalletCreation(walletAddress, timeout = 30000) {
       await new Promise(resolve => setTimeout(resolve, pollInterval));
       
     } catch (error) {
-      console.error('❌ Error during polling:', error);
+      console.error('❌ Error during notification polling:', error);
       // Continue polling despite errors
       await new Promise(resolve => setTimeout(resolve, pollInterval));
     }
   }
   
-  console.log('⏱️ Polling timeout reached');
+  console.log('⏱️ Notification polling timeout reached');
   return false;
+}
+
+/**
+ * Check for notifications from the server
+ */
+async function checkForNotifications(userWalletId) {
+  try {
+    const response = await fetch(`/api/notifications?user_wallet_id=${encodeURIComponent(userWalletId)}`);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    const result = await response.json();
+    
+    if (result.success) {
+      return result.notifications || [];
+    } else {
+      throw new Error(result.error || 'Failed to fetch notifications');
+    }
+    
+  } catch (error) {
+    console.error('❌ Failed to check notifications:', error);
+    return [];
+  }
 }
 
 /**
@@ -1310,6 +1340,7 @@ window.SolanafiedApp = {
   handleCheckBalance,
   copyInAppAddress,
   pollForWalletCreation,
+  checkForNotifications,
   toggleBundlerStatus,
   createBundler,
   addToken,

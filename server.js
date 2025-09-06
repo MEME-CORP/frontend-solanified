@@ -130,6 +130,97 @@ if (window.ENV.SUPABASE_URL === 'https://your-project-id.supabase.co') {
 }
 
 /**
+ * Handle notification from backend
+ */
+function handleNotification(request, response) {
+  let body = '';
+  
+  request.on('data', chunk => {
+    body += chunk.toString();
+  });
+  
+  request.on('end', () => {
+    try {
+      const notification = JSON.parse(body);
+      console.log('📢 Received notification from backend:', notification);
+      
+      // Store notification for frontend polling (simple in-memory storage)
+      if (!global.notifications) {
+        global.notifications = [];
+      }
+      
+      // Add timestamp and store notification
+      notification.received_at = new Date().toISOString();
+      global.notifications.push(notification);
+      
+      // Keep only last 100 notifications to prevent memory issues
+      if (global.notifications.length > 100) {
+        global.notifications = global.notifications.slice(-100);
+      }
+      
+      console.log(`✅ Notification stored. Total notifications: ${global.notifications.length}`);
+      
+      // Respond to backend
+      response.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      });
+      response.end(JSON.stringify({
+        success: true,
+        message: 'Notification received and stored',
+        notification_id: notification.user_wallet_id || 'unknown'
+      }));
+      
+    } catch (error) {
+      console.error('❌ Failed to process notification:', error);
+      response.writeHead(400, {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      });
+      response.end(JSON.stringify({
+        success: false,
+        error: 'Invalid JSON in notification'
+      }));
+    }
+  });
+}
+
+/**
+ * Handle notification polling from frontend
+ */
+function handleNotificationPolling(request, response) {
+  const parsedUrl = url.parse(request.url, true);
+  const userWalletId = parsedUrl.query.user_wallet_id;
+  
+  if (!userWalletId) {
+    response.writeHead(400, {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*'
+    });
+    response.end(JSON.stringify({
+      success: false,
+      error: 'user_wallet_id parameter required'
+    }));
+    return;
+  }
+  
+  // Get notifications for this user
+  const userNotifications = (global.notifications || [])
+    .filter(n => n.user_wallet_id === userWalletId)
+    .sort((a, b) => new Date(b.received_at) - new Date(a.received_at));
+  
+  response.writeHead(200, {
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': '*'
+  });
+  response.end(JSON.stringify({
+    success: true,
+    notifications: userNotifications,
+    count: userNotifications.length
+  }));
+}
+
+/**
  * Handle HTTP requests
  */
 function handleRequest(request, response) {
@@ -148,6 +239,17 @@ function handleRequest(request, response) {
   }
 
   console.log(`${request.method} ${pathname}`);
+
+  // Handle API endpoints
+  if (pathname === '/api/notifications' && request.method === 'POST') {
+    handleNotification(request, response);
+    return;
+  }
+  
+  if (pathname === '/api/notifications' && request.method === 'GET') {
+    handleNotificationPolling(request, response);
+    return;
+  }
 
   // Serve environment configuration
   if (pathname === '/env.js') {
@@ -205,8 +307,10 @@ server.listen(PORT, HOST, () => {
   console.log(`📁 Serving files from: ${__dirname}`);
   console.log('');
   console.log('📋 Available endpoints:');
-  console.log(`   • http://${HOST}:${PORT}/           - Main application`);
-  console.log(`   • http://${HOST}:${PORT}/env.js     - Environment configuration`);
+  console.log(`   • http://${HOST}:${PORT}/                              - Main application`);
+  console.log(`   • http://${HOST}:${PORT}/env.js                        - Environment configuration`);
+  console.log(`   • POST http://${HOST}:${PORT}/api/notifications        - Receive backend notifications`);
+  console.log(`   • GET http://${HOST}:${PORT}/api/notifications         - Poll for notifications`);
   console.log('');
   console.log('🔧 To stop the server, press Ctrl+C');
   console.log('');
