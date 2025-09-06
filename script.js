@@ -604,7 +604,7 @@ async function handleCreateWallet() {
     console.log('🔨 Creating in-app wallet for:', DatabaseAPI.truncateAddress(walletAddress));
     
     // Call the API to create in-app wallet
-    const response = await fetch('http://localhost:3000/api/orchestrator/create-wallet-in-app', {
+    const response = await fetch('https://orquestador-solanified.onrender.com:10000/api/orchestrator/create-wallet-in-app', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -620,23 +620,34 @@ async function handleCreateWallet() {
     }
     
     const result = await response.json();
-    console.log('✅ In-app wallet created successfully:', result);
+    console.log('✅ In-app wallet creation initiated:', result);
     
-    // Show success message
-    showSnackbar('In-app wallet created successfully!', 'success');
+    // Show initial success message
+    showSnackbar('In-app wallet creation initiated. Please wait...', 'info');
     
-    // Check registration status again
-    const userRegistered = await checkUserRegistration();
+    // Start polling for wallet creation completion
+    const walletCreated = await pollForWalletCreation(walletAddress, 30000); // 30 second timeout
     
-    if (userRegistered) {
-      // User is now registered, hide prompt and show dashboard
-      hideRegistrationPrompt();
-      await loadDashboardData();
-      setupRealtimeSubscriptions();
-      showSnackbar('Welcome to Solanafied! Your account is ready.', 'success');
+    if (walletCreated) {
+      // Wallet creation confirmed
+      showSnackbar('In-app wallet created successfully!', 'success');
+      
+      // Check registration status again
+      const userRegistered = await checkUserRegistration();
+      
+      if (userRegistered) {
+        // User is now registered, hide prompt and show dashboard
+        hideRegistrationPrompt();
+        await loadDashboardData();
+        setupRealtimeSubscriptions();
+        showSnackbar('Welcome to Solanafied! Your account is ready.', 'success');
+      } else {
+        // Something went wrong, ask user to refresh
+        showSnackbar('Wallet created but registration not confirmed. Please refresh.', 'warning');
+      }
     } else {
-      // Something went wrong, ask user to refresh
-      showSnackbar('Wallet created but registration not confirmed. Please refresh.', 'warning');
+      // Timeout or error during polling
+      showSnackbar('Wallet creation taking longer than expected. Please check again in a moment.', 'warning');
     }
     
   } catch (error) {
@@ -644,7 +655,7 @@ async function handleCreateWallet() {
     
     let message = 'Failed to create in-app wallet';
     if (error.message.includes('Failed to fetch')) {
-      message = 'Cannot connect to server. Please ensure the backend is running on localhost:3000';
+      message = 'Cannot connect to server. Please check your internet connection and try again.';
     } else if (error.message.includes('HTTP 400')) {
       message = 'Invalid wallet address or request data';
     } else if (error.message.includes('HTTP 409')) {
@@ -659,6 +670,42 @@ async function handleCreateWallet() {
   } finally {
     showLoadingOverlay(false);
   }
+}
+
+/**
+ * Poll for wallet creation completion
+ */
+async function pollForWalletCreation(walletAddress, timeout = 30000) {
+  const startTime = Date.now();
+  const pollInterval = 2000; // Poll every 2 seconds
+  
+  console.log('🔄 Starting to poll for wallet creation completion...');
+  
+  while (Date.now() - startTime < timeout) {
+    try {
+      // Update loading message
+      showLoadingOverlay(true, 'Waiting for wallet creation to complete...');
+      
+      // Check if user is now registered (which means wallet was created successfully)
+      const userRegistered = await checkUserRegistration();
+      
+      if (userRegistered) {
+        console.log('✅ Wallet creation completed successfully!');
+        return true;
+      }
+      
+      // Wait before next poll
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+      
+    } catch (error) {
+      console.error('❌ Error during polling:', error);
+      // Continue polling despite errors
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+    }
+  }
+  
+  console.log('⏱️ Polling timeout reached');
+  return false;
 }
 
 /**
@@ -982,6 +1029,7 @@ window.SolanafiedApp = {
   checkUserRegistration,
   handleCreateWallet,
   handleRefreshRegistration,
+  pollForWalletCreation,
   toggleBundlerStatus,
   createBundler,
   addToken,
