@@ -13,25 +13,9 @@
 
 // ========== SUPABASE CONFIGURATION ==========
 
-// Get environment variables (loaded by server or from window.ENV)
-const getEnvVar = (key, fallback = '') => {
-  // Try window.ENV first (loaded by server)
-  if (typeof window !== 'undefined' && window.ENV) {
-    return window.ENV[key] || fallback;
-  }
-  
-  // Fallback to process.env (Node.js environment)
-  if (typeof process !== 'undefined' && process.env) {
-    return process.env[key] || fallback;
-  }
-  
-  return fallback;
-};
-
-const SUPABASE_URL = getEnvVar('SUPABASE_URL');
-const SUPABASE_ANON_KEY = getEnvVar('SUPABASE_ANON_KEY');
-const SOLANA_RPC_ENDPOINT = getEnvVar('SOLANA_RPC_ENDPOINT', 'https://api.mainnet-beta.solana.com');
-const DEBUG = getEnvVar('DEBUG', 'false') === 'true';
+// Supabase credentials from environment
+const SUPABASE_URL = 'https://rxkzujdzdtvxtyuhiane.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ4a3p1amR6ZHR2eHR5dWhpYW5lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcxMDM0NTksImV4cCI6MjA3MjY3OTQ1OX0.imamrxKrzbBKJBAcbQYXpRTFBx34J_mAXSWNCjQ0AGM';
 
 // Initialize Supabase client
 let supabaseClient = null;
@@ -46,30 +30,12 @@ function initializeDatabase() {
       throw new Error('Supabase library not loaded. Make sure to include the Supabase script in your HTML.');
     }
     
-    // Validate environment variables
-    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-      throw new Error('Missing Supabase credentials. Please check your .env file.');
-    }
-    
-    if (SUPABASE_URL === 'https://your-project-id.supabase.co') {
-      throw new Error('Please update your .env file with actual Supabase credentials (copy from env.example).');
-    }
-    
     supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    
-    if (DEBUG) {
-      console.log('🔧 Debug mode enabled');
-      console.log('📡 Supabase URL:', SUPABASE_URL);
-      console.log('🔑 Supabase Key:', SUPABASE_ANON_KEY ? `${SUPABASE_ANON_KEY.substring(0, 20)}...` : 'Not provided');
-    }
-    
     console.log('✅ Database connection initialized');
     return true;
   } catch (error) {
     console.error('❌ Failed to initialize database:', error);
-    if (typeof showSnackbar === 'function') {
-      showSnackbar(error.message, 'error');
-    }
+    showSnackbar('Failed to connect to database', 'error');
     return false;
   }
 }
@@ -685,27 +651,12 @@ window.DatabaseAPI = {
 
 console.log('📦 Database API loaded successfully');
 
-// Auto-initialize when environment is ready
-function autoInitialize() {
-  // Check if we have credentials and Supabase library
-  if (SUPABASE_URL && SUPABASE_ANON_KEY && typeof supabase !== 'undefined') {
-    initializeDatabase();
-  } else if (DEBUG) {
-    console.log('⏳ Waiting for Supabase credentials and library...');
-  }
-}
-
-// Initialize when DOM and environment are ready
-if (typeof document !== 'undefined') {
+// Auto-initialize if Supabase credentials are provided
+if (SUPABASE_URL !== 'YOUR_SUPABASE_URL' && SUPABASE_ANON_KEY !== 'YOUR_SUPABASE_ANON_KEY') {
+  // Wait for DOM to be ready
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-      // Small delay to ensure env.js is loaded
-      setTimeout(autoInitialize, 100);
-    });
+    document.addEventListener('DOMContentLoaded', initializeDatabase);
   } else {
-    setTimeout(autoInitialize, 100);
+    initializeDatabase();
   }
-} else {
-  // Node.js environment
-  autoInitialize();
 }

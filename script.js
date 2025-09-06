@@ -70,28 +70,16 @@ async function connectWallet() {
     isConnected = true;
     updateWalletUI();
     
-    // Check user registration status
-    const userRegistered = await checkUserRegistration();
+    // Initialize or get user from database
+    await initializeUser();
     
-    if (userRegistered) {
-      // User is registered, check balance and show appropriate UI
-      const balance = currentUser.balance_sol || 0;
-      
-      if (balance >= 1) {
-        // User has sufficient balance, load full dashboard
-        await loadDashboardData();
-        setupRealtimeSubscriptions();
-        showSnackbar('Welcome back! Ready to create bundlers.', 'success');
-      } else {
-        // User has in-app wallet but insufficient balance
-        showFundingPrompt();
-        showSnackbar(`Welcome back! Please fund your in-app wallet (${DatabaseAPI.formatBalance(balance)} SOL). You need ≥1 SOL to create bundlers.`, 'warning');
-      }
-    } else {
-      // User not registered, show registration prompt
-      showRegistrationPrompt();
-      showSnackbar('Wallet connected! Please create your in-app wallet to continue.', 'info');
-    }
+    // Load dashboard data
+    await loadDashboardData();
+    
+    // Set up real-time subscriptions
+    setupRealtimeSubscriptions();
+    
+    showSnackbar('Wallet connected successfully!', 'success');
     
   } catch (error) {
     console.error('❌ Failed to connect wallet:', error);
@@ -144,131 +132,57 @@ async function disconnectWallet() {
 }
 
 /**
- * Check if user is registered in the database
+ * Initialize or get user from database
  */
-async function checkUserRegistration() {
+async function initializeUser() {
   try {
-    if (!currentWallet) {
-      throw new Error('Wallet not connected');
-    }
-    
-    // Ensure database is initialized
-    if (!DatabaseAPI) {
-      throw new Error('Database API not available. Please ensure the page is fully loaded.');
-    }
-    
-    // Try to initialize database if not already done
-    if (!DatabaseAPI.initialize()) {
-      throw new Error('Failed to initialize database connection. Please check your internet connection.');
+    if (!currentWallet || !DatabaseAPI) {
+      throw new Error('Wallet not connected or database not available');
     }
     
     const walletId = currentWallet.publicKey.toString();
-    showLoadingOverlay(true, 'Checking registration...');
     
-    console.log('🔍 Checking user registration for:', DatabaseAPI.truncateAddress(walletId));
+    // Try to get existing user
+    let user = await DatabaseAPI.getUserByWalletId(walletId);
     
-    // Try to get existing user by wallet address
-    const user = await DatabaseAPI.getUserByWalletId(walletId);
-    
-    if (user) {
-      // User is registered
-      console.log('✅ User found in database:', {
-        id: user.id,
-        wallet_id: DatabaseAPI.truncateAddress(user.user_wallet_id),
-        in_app_public_key: DatabaseAPI.truncateAddress(user.in_app_public_key),
-        balance_sol: user.balance_sol,
-        balance_spl: user.balance_spl
-      });
-      
-      currentUser = user;
-      
-      // Update balance from blockchain to get latest data
-      await updateInAppWalletBalance();
-      
-      return true;
-    } else {
-      // User not registered
-      console.log('👤 User not found in database - registration required');
-      currentUser = null;
-      return false;
+    if (!user) {
+      // Show registration prompt for new users
+      showRegistrationPrompt();
+      return;
     }
+    
+    currentUser = user;
+    console.log('✅ User initialized:', user);
+    
+    // Update balance display from database
+    updateBalanceDisplay(user.balance_sol, user.balance_spl);
     
   } catch (error) {
-    console.error('❌ Failed to check user registration:', error);
-    
-    let message = 'Failed to check registration status';
-    if (error.message.includes('Database API not available')) {
-      message = 'Database connection failed. Please refresh the page and try again.';
-    } else if (error.message.includes('Failed to initialize database')) {
-      message = 'Cannot connect to database. Please check your internet connection.';
-    }
-    
-    showSnackbar(message, 'error');
-    return false;
-  } finally {
-    showLoadingOverlay(false);
+    console.error('❌ Failed to initialize user:', error);
+    showSnackbar('Failed to initialize user data', 'error');
   }
 }
 
 /**
- * Update wallet balance from blockchain (for main wallet)
+ * Refresh user data from database
  */
-async function updateWalletBalance() {
+async function refreshUserData() {
   try {
-    if (!currentWallet) return;
+    if (!currentUser || !DatabaseAPI) return;
     
-    // Create connection to Solana cluster
-    const rpcEndpoint = (window.ENV && window.ENV.SOLANA_RPC_ENDPOINT) 
-      ? window.ENV.SOLANA_RPC_ENDPOINT 
-      : solanaWeb3.clusterApiUrl('mainnet-beta');
+    // Get updated user data from database
+    const updatedUser = await DatabaseAPI.getUserByWalletId(currentUser.user_wallet_id);
+    
+    if (updatedUser) {
+      currentUser = updatedUser;
+      console.log('🔄 User data refreshed:', updatedUser);
       
-    const connection = new solanaWeb3.Connection(rpcEndpoint, 'confirmed');
-    
-    // Get SOL balance
-    const balance = await connection.getBalance(currentWallet.publicKey);
-    const solBalance = balance / solanaWeb3.LAMPORTS_PER_SOL;
-    
-    console.log(`💰 Main wallet balance: ${solBalance} SOL`);
-    
-    // Update UI
-    updateBalanceDisplay(solBalance, 0);
-    
-  } catch (error) {
-    console.error('❌ Failed to update main wallet balance:', error);
-  }
-}
-
-/**
- * Update in-app wallet balance from database
- */
-async function updateInAppWalletBalance() {
-  try {
-    if (!currentUser || !DatabaseAPI) return 0;
-    
-    console.log('💰 Checking in-app wallet balance from database...');
-    
-    // Get latest user data from database
-    const user = await DatabaseAPI.getUserByWalletId(currentUser.user_wallet_id);
-    
-    if (user) {
-      // Update current user object with latest data
-      currentUser.balance_sol = user.balance_sol;
-      currentUser.balance_spl = user.balance_spl;
-      
-      console.log(`💰 In-app wallet balance: ${user.balance_sol} SOL, ${user.balance_spl} SPL`);
-      
-      // Update UI with in-app wallet balance
-      updateInAppBalanceDisplay(user.balance_sol, user.balance_spl);
-      
-      return user.balance_sol;
-    } else {
-      console.error('❌ User not found in database');
-      return 0;
+      // Update balance display
+      updateBalanceDisplay(updatedUser.balance_sol, updatedUser.balance_spl);
     }
     
   } catch (error) {
-    console.error('❌ Failed to update in-app wallet balance:', error);
-    return 0;
+    console.error('❌ Failed to refresh user data:', error);
   }
 }
 
@@ -313,74 +227,21 @@ function updateWalletUI() {
 }
 
 /**
- * Update balance display (for main wallet)
+ * Update balance display
  */
 function updateBalanceDisplay(solBalance, splBalance) {
   const solBalanceEl = document.getElementById('sol-balance');
   const splBalanceEl = document.getElementById('spl-balance');
+  const profileSolEl = document.getElementById('profile-sol');
+  const profileSplEl = document.getElementById('profile-spl');
   
   const formattedSol = DatabaseAPI.formatBalance(solBalance);
   const formattedSpl = DatabaseAPI.formatBalance(splBalance);
   
   if (solBalanceEl) solBalanceEl.textContent = formattedSol;
   if (splBalanceEl) splBalanceEl.textContent = formattedSpl;
-}
-
-/**
- * Update in-app wallet balance display
- */
-function updateInAppBalanceDisplay(solBalance, splBalance) {
-  const profileSolEl = document.getElementById('profile-sol');
-  const profileSplEl = document.getElementById('profile-spl');
-  const inAppBalanceEl = document.getElementById('in-app-balance');
-  
-  const formattedSol = DatabaseAPI.formatBalance(solBalance);
-  const formattedSpl = DatabaseAPI.formatBalance(splBalance);
-  
   if (profileSolEl) profileSolEl.textContent = formattedSol;
   if (profileSplEl) profileSplEl.textContent = formattedSpl;
-  if (inAppBalanceEl) inAppBalanceEl.textContent = formattedSol;
-  
-  // Update bundler creation button based on balance
-  updateBundlerCreationUI(solBalance);
-}
-
-/**
- * Update bundler creation UI based on balance
- */
-function updateBundlerCreationUI(solBalance) {
-  const createBundlerBtn = document.getElementById('create-bundler-btn');
-  const balanceWarning = document.getElementById('balance-warning');
-  
-  if (createBundlerBtn) {
-    if (solBalance >= 1) {
-      createBundlerBtn.disabled = false;
-      createBundlerBtn.classList.remove('disabled');
-      createBundlerBtn.innerHTML = `
-        <span class="material-symbols-outlined">inventory_2</span>
-        Create Bundler
-      `;
-    } else {
-      createBundlerBtn.disabled = true;
-      createBundlerBtn.classList.add('disabled');
-      createBundlerBtn.innerHTML = `
-        <span class="material-symbols-outlined">block</span>
-        Need ≥1 SOL to Create Bundler
-      `;
-    }
-  }
-  
-  if (balanceWarning) {
-    if (solBalance < 1) {
-      balanceWarning.style.display = 'block';
-      balanceWarning.innerHTML = `
-        <span class="material-symbols-outlined">warning</span>
-        You need at least 1 SOL in your in-app wallet to create a bundler. Current balance: ${DatabaseAPI.formatBalance(solBalance)} SOL
-      `;
-    } else {
-      balanceWarning.style.display = 'none';
-    }
-  }
 }
 
 /**
@@ -389,7 +250,6 @@ function updateBundlerCreationUI(solBalance) {
 function hideDashboard() {
   document.getElementById('dashboard').style.display = 'none';
   hideRegistrationPrompt();
-  hideFundingPrompt();
 }
 
 /**
@@ -419,12 +279,12 @@ function showRegistrationPrompt() {
               <span class="material-symbols-outlined">account_balance_wallet</span>
             </div>
             <h4>Welcome to Solanafied!</h4>
-            <p>Your Phantom wallet is connected, but you need to create an in-app wallet to access all features.</p>
+            <p>Your wallet is connected, but you need to create an in-app wallet to access all features.</p>
             <p>This will allow you to:</p>
             <ul class="feature-list">
               <li><span class="material-symbols-outlined">inventory_2</span> Create and manage bundlers</li>
               <li><span class="material-symbols-outlined">folder</span> Access mother and child wallets</li>
-              <li><span class="material-symbols-outlined">token</span> Manage your token portfolio</li>
+              <li><span class="material-symbols-outlined">token</span> Create tokens on Pump.fun</li>
               <li><span class="material-symbols-outlined">analytics</span> View detailed analytics</li>
             </ul>
             <div class="registration-actions">
@@ -434,12 +294,12 @@ function showRegistrationPrompt() {
               </button>
               <button id="refresh-registration-btn" class="secondary-button">
                 <span class="material-symbols-outlined">refresh</span>
-                Check Again
+                Check Status
               </button>
             </div>
             <p class="registration-note">
               <span class="material-symbols-outlined">info</span>
-              Your in-app wallet will be handled securely by our backend system.
+              Your in-app wallet will be created securely by our backend system.
             </p>
           </div>
         </div>
@@ -451,7 +311,7 @@ function showRegistrationPrompt() {
     walletStatus.parentNode.insertBefore(registrationPrompt, walletStatus.nextSibling);
     
     // Add event listeners
-    document.getElementById('create-wallet-btn').addEventListener('click', handleCreateWallet);
+    document.getElementById('create-wallet-btn').addEventListener('click', handleCreateInAppWallet);
     document.getElementById('refresh-registration-btn').addEventListener('click', handleRefreshRegistration);
   }
   
@@ -465,112 +325,6 @@ function hideRegistrationPrompt() {
   const registrationPrompt = document.getElementById('registration-prompt');
   if (registrationPrompt) {
     registrationPrompt.style.display = 'none';
-  }
-}
-
-/**
- * Show funding prompt for users with in-app wallet but insufficient balance
- */
-function showFundingPrompt() {
-  // Hide dashboard and registration prompt
-  document.getElementById('dashboard').style.display = 'none';
-  hideRegistrationPrompt();
-  
-  // Show funding prompt
-  let fundingPrompt = document.getElementById('funding-prompt');
-  
-  if (!fundingPrompt) {
-    // Create funding prompt if it doesn't exist
-    fundingPrompt = document.createElement('section');
-    fundingPrompt.id = 'funding-prompt';
-    fundingPrompt.className = 'funding-prompt';
-    fundingPrompt.innerHTML = `
-      <div class="card funding-card">
-        <div class="card-header">
-          <span class="material-symbols-outlined">account_balance_wallet</span>
-          <h3>Fund Your In-App Wallet</h3>
-        </div>
-        <div class="card-content">
-          <div class="funding-content">
-            <div class="wallet-info">
-              <div class="info-row">
-                <span class="label">In-App Wallet Address:</span>
-                <div class="wallet-address-container">
-                  <span id="funding-wallet-address" class="wallet-address">${currentUser ? DatabaseAPI.truncateAddress(currentUser.in_app_public_key) : ''}</span>
-                  <button onclick="copyInAppAddress()" class="icon-button copy-btn" title="Copy address">
-                    <span class="material-symbols-outlined">content_copy</span>
-                  </button>
-                </div>
-              </div>
-              <div class="info-row">
-                <span class="label">Current Balance:</span>
-                <span id="funding-current-balance" class="balance-value">${currentUser ? DatabaseAPI.formatBalance(currentUser.balance_sol) : '0.000'} SOL</span>
-              </div>
-              <div class="info-row">
-                <span class="label">Required Balance:</span>
-                <span class="balance-required">≥1.000 SOL</span>
-              </div>
-            </div>
-            <div class="funding-instructions">
-              <h4>📋 Instructions:</h4>
-              <ol>
-                <li>Copy your in-app wallet address above</li>
-                <li>Send at least 1 SOL to this address from your main wallet or exchange</li>
-                <li>Wait for the backend system to detect and update your balance</li>
-                <li>Click "Check Balance" to refresh your balance from our database</li>
-                <li>Once you have ≥1 SOL, you can create bundlers</li>
-              </ol>
-              <div class="funding-note">
-                <span class="material-symbols-outlined">info</span>
-                <span>Balance updates are managed by our backend system and may take a few minutes to reflect.</span>
-              </div>
-            </div>
-            <div class="funding-actions">
-              <button id="check-balance-btn" class="primary-button">
-                <span class="material-symbols-outlined">refresh</span>
-                Check Balance
-              </button>
-              <button id="copy-address-btn" class="secondary-button" onclick="copyInAppAddress()">
-                <span class="material-symbols-outlined">content_copy</span>
-                Copy Address
-              </button>
-            </div>
-            <div id="balance-warning" class="warning-message" style="display: none;">
-              <span class="material-symbols-outlined">warning</span>
-              <span>You need at least 1 SOL to create bundlers</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-    
-    // Insert after wallet status section
-    const walletStatus = document.getElementById('wallet-status');
-    walletStatus.parentNode.insertBefore(fundingPrompt, walletStatus.nextSibling);
-    
-    // Add event listeners
-    document.getElementById('check-balance-btn').addEventListener('click', handleCheckBalance);
-  }
-  
-  // Update wallet info if user exists
-  if (currentUser) {
-    const addressEl = document.getElementById('funding-wallet-address');
-    const balanceEl = document.getElementById('funding-current-balance');
-    
-    if (addressEl) addressEl.textContent = DatabaseAPI.truncateAddress(currentUser.in_app_public_key);
-    if (balanceEl) balanceEl.textContent = `${DatabaseAPI.formatBalance(currentUser.balance_sol)} SOL`;
-  }
-  
-  fundingPrompt.style.display = 'block';
-}
-
-/**
- * Hide funding prompt
- */
-function hideFundingPrompt() {
-  const fundingPrompt = document.getElementById('funding-prompt');
-  if (fundingPrompt) {
-    fundingPrompt.style.display = 'none';
   }
 }
 
@@ -614,12 +368,7 @@ function showSnackbar(message, type = 'info') {
  * Load all dashboard data
  */
 async function loadDashboardData() {
-  if (!currentUser || !DatabaseAPI) {
-    console.log('⚠️ Cannot load dashboard data: user not registered or database not available');
-    return;
-  }
-  
-  console.log('📊 Loading dashboard data for registered user...');
+  if (!currentUser || !DatabaseAPI) return;
   
   try {
     // Update user ID display
@@ -803,150 +552,34 @@ async function loadTokens() {
 // ========== REGISTRATION HANDLERS ==========
 
 /**
- * Handle create wallet button click
+ * Handle create in-app wallet
  */
-async function handleCreateWallet() {
+async function handleCreateInAppWallet() {
   try {
-    if (!currentWallet) {
-      throw new Error('No wallet connected');
-    }
-
-    showLoadingOverlay(true, 'Creating in-app wallet...');
-    
-    const walletAddress = currentWallet.publicKey.toString();
-    console.log('🔨 Creating in-app wallet for:', DatabaseAPI.truncateAddress(walletAddress));
-    
-    // Call the API to create in-app wallet
-    const response = await fetch('https://orquestador-solanified.onrender.com/api/orchestrator/create-wallet-in-app', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        user_wallet_id: walletAddress
-      })
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+    if (!currentWallet || !OrchestratorAPI) {
+      throw new Error('Wallet not connected or orchestrator not available');
     }
     
-    const result = await response.json();
-    console.log('✅ In-app wallet creation initiated:', result);
+    const walletId = currentWallet.publicKey.toString();
     
-    // Show initial success message
-    showSnackbar('In-app wallet creation initiated. Please wait...', 'info');
+    // Create in-app wallet via orchestrator
+    const result = await OrchestratorAPI.createInAppWallet(walletId);
     
-    // Start polling for wallet creation completion
-    const walletCreated = await pollForWalletCreation(walletAddress, 30000); // 30 second timeout
-    
-    if (walletCreated) {
-      // Wallet creation confirmed
-      showSnackbar('In-app wallet created successfully!', 'success');
+    if (result) {
+      // Refresh user data from database
+      await refreshUserData();
       
-      // Check registration status again
-      const userRegistered = await checkUserRegistration();
+      // Hide registration prompt and show dashboard
+      hideRegistrationPrompt();
+      await loadDashboardData();
+      setupRealtimeSubscriptions();
       
-      if (userRegistered) {
-        // User is now registered, hide registration prompt and show funding prompt
-        hideRegistrationPrompt();
-        showFundingPrompt();
-        showSnackbar('Welcome to Solanafied! Please fund your in-app wallet to start creating bundlers.', 'success');
-      } else {
-        // Something went wrong, ask user to refresh
-        showSnackbar('Wallet created but registration not confirmed. Please refresh.', 'warning');
-      }
-    } else {
-      // Timeout or error during polling
-      showSnackbar('Wallet creation taking longer than expected. Please check again in a moment.', 'warning');
+      showSnackbar('In-app wallet created! Please send SOL to start using bundlers.', 'success');
     }
     
   } catch (error) {
     console.error('❌ Failed to create in-app wallet:', error);
-    
-    let message = 'Failed to create in-app wallet';
-    if (error.message.includes('Failed to fetch')) {
-      message = 'Cannot connect to server. Please check your internet connection and try again.';
-    } else if (error.message.includes('HTTP 400')) {
-      message = 'Invalid wallet address or request data';
-    } else if (error.message.includes('HTTP 409')) {
-      message = 'Wallet already exists. Please try refreshing your registration status.';
-    } else if (error.message.includes('HTTP 500')) {
-      message = 'Server error. Please try again later or contact support.';
-    } else if (error.message) {
-      message = error.message;
-    }
-    
-    showSnackbar(message, 'error');
-  } finally {
-    showLoadingOverlay(false);
-  }
-}
-
-/**
- * Poll for wallet creation completion using backend notifications
- */
-async function pollForWalletCreation(walletAddress, timeout = 30000) {
-  const startTime = Date.now();
-  const pollInterval = 2000; // Poll every 2 seconds
-  
-  console.log('🔄 Starting to poll for wallet creation notifications...');
-  
-  while (Date.now() - startTime < timeout) {
-    try {
-      // Update loading message
-      showLoadingOverlay(true, 'Waiting for wallet creation to complete...');
-      
-      // Check for notifications from backend
-      const notifications = await checkForNotifications(walletAddress);
-      
-      // Look for wallet creation notification
-      const walletCreatedNotification = notifications.find(n => 
-        n.type === 'WALLET_CREATED' && n.user_wallet_id === walletAddress
-      );
-      
-      if (walletCreatedNotification) {
-        console.log('✅ Wallet creation notification received!', walletCreatedNotification);
-        return true;
-      }
-      
-      // Wait before next poll
-      await new Promise(resolve => setTimeout(resolve, pollInterval));
-      
-    } catch (error) {
-      console.error('❌ Error during notification polling:', error);
-      // Continue polling despite errors
-      await new Promise(resolve => setTimeout(resolve, pollInterval));
-    }
-  }
-  
-  console.log('⏱️ Notification polling timeout reached');
-  return false;
-}
-
-/**
- * Check for notifications from the server
- */
-async function checkForNotifications(userWalletId) {
-  try {
-    const response = await fetch(`/api/notifications?user_wallet_id=${encodeURIComponent(userWalletId)}`);
-    
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-    
-    const result = await response.json();
-    
-    if (result.success) {
-      return result.notifications || [];
-    } else {
-      throw new Error(result.error || 'Failed to fetch notifications');
-    }
-    
-  } catch (error) {
-    console.error('❌ Failed to check notifications:', error);
-    return [];
+    showSnackbar('Failed to create in-app wallet', 'error');
   }
 }
 
@@ -955,24 +588,19 @@ async function checkForNotifications(userWalletId) {
  */
 async function handleRefreshRegistration() {
   try {
-    const userRegistered = await checkUserRegistration();
+    if (!currentWallet) return;
     
-    if (userRegistered) {
-      // User is now registered, check balance and show appropriate UI
-      const balance = currentUser.balance_sol || 0;
-      
+    const walletId = currentWallet.publicKey.toString();
+    
+    // Check if user exists in database now
+    const user = await DatabaseAPI.getUserByWalletId(walletId);
+    
+    if (user) {
+      currentUser = user;
       hideRegistrationPrompt();
-      
-      if (balance >= 1) {
-        // User has sufficient balance, load full dashboard
-        await loadDashboardData();
-        setupRealtimeSubscriptions();
-        showSnackbar('Registration confirmed! Welcome to Solanafied!', 'success');
-      } else {
-        // User has in-app wallet but insufficient balance
-        showFundingPrompt();
-        showSnackbar(`Registration confirmed! Please fund your in-app wallet (${DatabaseAPI.formatBalance(balance)} SOL). You need ≥1 SOL to create bundlers.`, 'warning');
-      }
+      await loadDashboardData();
+      setupRealtimeSubscriptions();
+      showSnackbar('Registration confirmed! Welcome to Solanafied!', 'success');
     } else {
       showSnackbar('User still not registered. Please create your in-app wallet first.', 'warning');
     }
@@ -980,62 +608,6 @@ async function handleRefreshRegistration() {
   } catch (error) {
     console.error('❌ Failed to refresh registration:', error);
     showSnackbar('Failed to check registration status', 'error');
-  }
-}
-
-/**
- * Handle balance check for funding prompt
- */
-async function handleCheckBalance() {
-  try {
-    if (!currentUser) {
-      throw new Error('No user logged in');
-    }
-    
-    showLoadingOverlay(true, 'Checking balance from database...');
-    
-    // Update balance from database
-    const newBalance = await updateInAppWalletBalance();
-    
-    // Update UI
-    const balanceEl = document.getElementById('funding-current-balance');
-    if (balanceEl) {
-      balanceEl.textContent = `${DatabaseAPI.formatBalance(newBalance)} SOL`;
-    }
-    
-    if (newBalance >= 1) {
-      // User now has sufficient balance
-      hideFundingPrompt();
-      await loadDashboardData();
-      setupRealtimeSubscriptions();
-      showSnackbar(`Great! Your balance is now ${DatabaseAPI.formatBalance(newBalance)} SOL. You can create bundlers!`, 'success');
-    } else {
-      showSnackbar(`Balance updated: ${DatabaseAPI.formatBalance(newBalance)} SOL. You still need ≥1 SOL to create bundlers.`, 'info');
-    }
-    
-  } catch (error) {
-    console.error('❌ Failed to check balance:', error);
-    showSnackbar('Failed to check balance', 'error');
-  } finally {
-    showLoadingOverlay(false);
-  }
-}
-
-/**
- * Copy in-app wallet address to clipboard
- */
-async function copyInAppAddress() {
-  try {
-    if (!currentUser || !currentUser.in_app_public_key) {
-      throw new Error('No in-app wallet address available');
-    }
-    
-    await navigator.clipboard.writeText(currentUser.in_app_public_key);
-    showSnackbar('In-app wallet address copied to clipboard', 'success');
-    
-  } catch (error) {
-    console.error('❌ Failed to copy address:', error);
-    showSnackbar('Failed to copy address', 'error');
   }
 }
 
@@ -1066,54 +638,267 @@ async function toggleBundlerStatus(bundlerId, newStatus) {
  */
 async function createBundler() {
   try {
-    const tokenName = prompt('Enter token name for the bundler:');
-    if (!tokenName || !tokenName.trim()) return;
+    if (!currentUser || !OrchestratorAPI) {
+      showSnackbar('Please create an in-app wallet first', 'warning');
+      return;
+    }
     
-    showLoadingOverlay(true, 'Creating bundler...');
+    // Check if user has sufficient balance
+    if (parseFloat(currentUser.balance_sol) < 1) {
+      showSnackbar('You need at least 1 SOL to create a bundler. Please fund your in-app wallet first.', 'warning');
+      return;
+    }
     
-    await DatabaseAPI.createBundler(currentUser.user_wallet_id, tokenName.trim());
+    const bundlerBalance = prompt(`Enter bundler balance (SOL):\n\nAvailable: ${currentUser.balance_sol} SOL\nMinimum: 1 SOL`);
+    if (!bundlerBalance || isNaN(bundlerBalance)) return;
     
-    // Refresh bundlers list
-    await loadBundlers();
+    const balance = parseInt(bundlerBalance);
+    if (balance < 1) {
+      showSnackbar('Minimum bundler balance is 1 SOL', 'error');
+      return;
+    }
+    
+    if (balance > parseFloat(currentUser.balance_sol)) {
+      showSnackbar('Insufficient balance in your in-app wallet', 'error');
+      return;
+    }
+    
+    // Create bundler via orchestrator
+    const result = await OrchestratorAPI.createBundler(currentUser.user_wallet_id, balance);
+    
+    if (result) {
+      // Refresh data
+      await refreshUserData();
+      await loadBundlers();
+    }
     
   } catch (error) {
     console.error('❌ Failed to create bundler:', error);
     showSnackbar('Failed to create bundler', 'error');
-  } finally {
-    showLoadingOverlay(false);
   }
 }
 
 /**
- * Add new token
+ * Create token on Pump.fun
  */
 async function addToken() {
   try {
-    const name = prompt('Enter token name:');
-    if (!name || !name.trim()) return;
+    if (!currentUser || !OrchestratorAPI) {
+      showSnackbar('Please create an in-app wallet first', 'warning');
+      return;
+    }
     
-    const symbol = prompt('Enter token symbol:');
-    if (!symbol || !symbol.trim()) return;
+    // Check if user has active bundler
+    const bundlers = await DatabaseAPI.getUserBundlers(currentUser.user_wallet_id);
+    const activeBundler = bundlers.find(b => b.is_active);
     
-    showLoadingOverlay(true, 'Adding token...');
+    if (!activeBundler) {
+      showSnackbar('You need an active bundler to create tokens', 'warning');
+      return;
+    }
     
-    const tokenData = {
-      name: name.trim(),
-      symbol: symbol.trim().toUpperCase(),
-      description: null,
-      dev_buy_amount: 0
-    };
-    
-    await DatabaseAPI.createToken(currentUser.user_wallet_id, tokenData);
-    
-    // Refresh tokens list
-    await loadTokens();
+    // Show token creation form
+    showTokenCreationForm();
     
   } catch (error) {
-    console.error('❌ Failed to add token:', error);
-    showSnackbar('Failed to add token', 'error');
-  } finally {
-    showLoadingOverlay(false);
+    console.error('❌ Failed to check bundler status:', error);
+    showSnackbar('Failed to check bundler status', 'error');
+  }
+}
+
+/**
+ * Show token creation form
+ */
+function showTokenCreationForm() {
+  const formHtml = `
+    <div class="modal-overlay" id="token-form-modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Create Token on Pump.fun</h3>
+          <button class="modal-close" onclick="closeTokenForm()">
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+        <div class="modal-body">
+          <form id="token-creation-form">
+            <div class="form-group">
+              <label for="token-name">Token Name *</label>
+              <input type="text" id="token-name" required maxlength="50">
+            </div>
+            <div class="form-group">
+              <label for="token-symbol">Token Symbol *</label>
+              <input type="text" id="token-symbol" required maxlength="10" style="text-transform: uppercase;">
+            </div>
+            <div class="form-group">
+              <label for="token-description">Description</label>
+              <textarea id="token-description" rows="3" maxlength="500"></textarea>
+            </div>
+            <div class="form-group">
+              <label for="token-logo">Logo (Base64 or URL)</label>
+              <input type="text" id="token-logo" placeholder="data:image/png;base64,... or https://...">
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="token-twitter">Twitter</label>
+                <input type="text" id="token-twitter" placeholder="@username">
+              </div>
+              <div class="form-group">
+                <label for="token-telegram">Telegram</label>
+                <input type="text" id="token-telegram" placeholder="@username">
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="token-website">Website</label>
+              <input type="url" id="token-website" placeholder="https://...">
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="dev-buy-amount">Dev Buy Amount (SOL)</label>
+                <input type="number" id="dev-buy-amount" step="0.1" min="0" value="0.1">
+              </div>
+              <div class="form-group">
+                <label for="slippage">Slippage (%)</label>
+                <input type="number" id="slippage" step="0.1" min="0.1" max="50" value="1.0">
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="priority-fee">Priority Fee (SOL)</label>
+              <input type="number" id="priority-fee" step="0.000001" min="0" value="0.000005">
+            </div>
+            <div class="form-actions">
+              <button type="button" class="secondary-button" onclick="closeTokenForm()">Cancel</button>
+              <button type="submit" class="primary-button">Create Token</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.body.insertAdjacentHTML('beforeend', formHtml);
+  
+  // Add form submit handler
+  document.getElementById('token-creation-form').addEventListener('submit', handleTokenCreation);
+}
+
+/**
+ * Close token creation form
+ */
+function closeTokenForm() {
+  const modal = document.getElementById('token-form-modal');
+  if (modal) {
+    modal.remove();
+  }
+}
+
+/**
+ * Handle token creation form submission
+ */
+async function handleTokenCreation(event) {
+  event.preventDefault();
+  
+  try {
+    const formData = new FormData(event.target);
+    
+    const tokenData = {
+      name: document.getElementById('token-name').value.trim(),
+      symbol: document.getElementById('token-symbol').value.trim().toUpperCase(),
+      description: document.getElementById('token-description').value.trim(),
+      logoBase64: document.getElementById('token-logo').value.trim(),
+      twitter: document.getElementById('token-twitter').value.trim(),
+      telegram: document.getElementById('token-telegram').value.trim(),
+      website: document.getElementById('token-website').value.trim(),
+      devBuyAmount: document.getElementById('dev-buy-amount').value,
+      slippage: parseFloat(document.getElementById('slippage').value),
+      priorityFee: document.getElementById('priority-fee').value
+    };
+    
+    if (!tokenData.name || !tokenData.symbol) {
+      showSnackbar('Token name and symbol are required', 'error');
+      return;
+    }
+    
+    closeTokenForm();
+    
+    // Create token via orchestrator
+    const result = await OrchestratorAPI.createAndBuyToken(currentUser.user_wallet_id, tokenData);
+    
+    if (result) {
+      // Refresh data
+      await refreshUserData();
+      await loadBundlers();
+      await loadTokens();
+    }
+    
+  } catch (error) {
+    console.error('❌ Failed to create token:', error);
+    showSnackbar('Failed to create token', 'error');
+  }
+}
+
+/**
+ * Verify in-app wallet balance
+ */
+async function verifyBalance() {
+  try {
+    if (!currentUser || !OrchestratorAPI) {
+      showSnackbar('Please create an in-app wallet first', 'warning');
+      return;
+    }
+    
+    const result = await OrchestratorAPI.verifyInAppBalance(currentUser.user_wallet_id);
+    
+    if (result && result.balanceUpdated) {
+      // Refresh user data
+      await refreshUserData();
+      await loadDashboardData();
+    }
+    
+  } catch (error) {
+    console.error('❌ Failed to verify balance:', error);
+    showSnackbar('Failed to verify balance', 'error');
+  }
+}
+
+/**
+ * Transfer SOL to owner wallet
+ */
+async function transferToOwner() {
+  try {
+    if (!currentUser || !OrchestratorAPI) {
+      showSnackbar('Please create an in-app wallet first', 'warning');
+      return;
+    }
+    
+    if (parseFloat(currentUser.balance_sol) <= 0) {
+      showSnackbar('No SOL available to transfer', 'warning');
+      return;
+    }
+    
+    const amount = prompt(`Enter amount to transfer (SOL):\n\nAvailable: ${currentUser.balance_sol} SOL`);
+    if (!amount || isNaN(amount)) return;
+    
+    const transferAmount = parseFloat(amount);
+    if (transferAmount <= 0) {
+      showSnackbar('Transfer amount must be greater than 0', 'error');
+      return;
+    }
+    
+    if (transferAmount > parseFloat(currentUser.balance_sol)) {
+      showSnackbar('Insufficient balance', 'error');
+      return;
+    }
+    
+    const result = await OrchestratorAPI.transferToOwner(currentUser.user_wallet_id, transferAmount);
+    
+    if (result) {
+      // Refresh data
+      await refreshUserData();
+    }
+    
+  } catch (error) {
+    console.error('❌ Failed to transfer to owner:', error);
+    showSnackbar('Failed to transfer SOL', 'error');
   }
 }
 
@@ -1334,13 +1119,6 @@ if (document.readyState === 'loading') {
 window.SolanafiedApp = {
   connectWallet,
   disconnectWallet,
-  checkUserRegistration,
-  handleCreateWallet,
-  handleRefreshRegistration,
-  handleCheckBalance,
-  copyInAppAddress,
-  pollForWalletCreation,
-  checkForNotifications,
   toggleBundlerStatus,
   createBundler,
   addToken,

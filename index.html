@@ -15,9 +15,6 @@
     <!-- Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
-    <!-- Environment Configuration (loaded by server) -->
-    <script src="/env.js"></script>
-    
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -65,6 +62,16 @@
                         <span id="wallet-address" class="address-text"></span>
                         <button class="copy-btn" onclick="copyAddress()">
                             <span class="material-symbols-outlined">content_copy</span>
+                        </button>
+                    </div>
+                    <div class="wallet-actions">
+                        <button class="secondary-button" onclick="verifyBalance()">
+                            <span class="material-symbols-outlined">refresh</span>
+                            Verify Balance
+                        </button>
+                        <button class="secondary-button" onclick="transferToOwner()">
+                            <span class="material-symbols-outlined">send</span>
+                            Transfer SOL
                         </button>
                     </div>
                     <div class="balance-grid">
@@ -200,6 +207,8 @@
 
     <!-- Scripts -->
     <script src="database.js"></script>
+    <script src="orchestrator.js"></script>
+    <script src="notifications.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
