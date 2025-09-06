@@ -604,7 +604,7 @@ async function handleCreateWallet() {
     console.log('🔨 Creating in-app wallet for:', DatabaseAPI.truncateAddress(walletAddress));
     
     // Call the API to create in-app wallet
-    const response = await fetch('https://orquestador-solanified.onrender.com:10000/api/orchestrator/create-wallet-in-app', {
+    const response = await fetch('https://orquestador-solanified.onrender.com/api/orchestrator/create-wallet-in-app', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
