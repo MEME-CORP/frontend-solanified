@@ -574,12 +574,183 @@ async function handleCreateInAppWallet() {
       await loadDashboardData();
       setupRealtimeSubscriptions();
       
-      showSnackbar('In-app wallet created! Please send SOL to start using bundlers.', 'success');
+      // Show in-app wallet details and funding prompt
+      showInAppWalletCreated(result.inAppPublicKey, result.balanceSol);
     }
     
   } catch (error) {
     console.error('❌ Failed to create in-app wallet:', error);
     showSnackbar('Failed to create in-app wallet', 'error');
+  }
+}
+
+/**
+ * Show in-app wallet created success with funding prompt
+ */
+function showInAppWalletCreated(inAppPublicKey, balanceSol) {
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.id = 'wallet-created-modal';
+  
+  modal.innerHTML = `
+    <div class="modal-content">
+      <div class="modal-header">
+        <span class="material-symbols-outlined" style="color: var(--md-sys-color-success);">check_circle</span>
+        <h3>In-App Wallet Created!</h3>
+      </div>
+      <div class="modal-body">
+        <div class="wallet-created-content">
+          <div class="success-icon">
+            <span class="material-symbols-outlined">account_balance_wallet</span>
+          </div>
+          <h4>Your in-app wallet is ready!</h4>
+          <p>Your new in-app wallet has been created and registered in the database.</p>
+          
+          <div class="wallet-details">
+            <div class="detail-item">
+              <label>In-App Public Key:</label>
+              <div class="key-display">
+                <span class="key-text">${DatabaseAPI.truncateAddress(inAppPublicKey, 8, 8)}</span>
+                <button class="copy-btn" onclick="copyToClipboard('${inAppPublicKey}')">
+                  <span class="material-symbols-outlined">content_copy</span>
+                </button>
+              </div>
+            </div>
+            <div class="detail-item">
+              <label>Current Balance:</label>
+              <span class="balance-display">${balanceSol} SOL</span>
+            </div>
+          </div>
+          
+          <div class="funding-prompt">
+            <div class="prompt-icon">
+              <span class="material-symbols-outlined">send</span>
+            </div>
+            <h5>Next Steps:</h5>
+            <ol class="steps-list">
+              <li>Send SOL to your in-app wallet address above</li>
+              <li>Click "Verify Balance" once you've sent the funds</li>
+              <li>You need at least 1 SOL to create bundlers</li>
+            </ol>
+          </div>
+          
+          <div class="modal-actions">
+            <button class="secondary-button" onclick="copyToClipboard('${inAppPublicKey}')">
+              <span class="material-symbols-outlined">content_copy</span>
+              Copy Address
+            </button>
+            <button class="primary-button" onclick="closeWalletCreatedModal()">
+              <span class="material-symbols-outlined">done</span>
+              Got it!
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+  
+  // Show success snackbar
+  showSnackbar('In-app wallet created successfully! Please fund it to continue.', 'success');
+}
+
+/**
+ * Close wallet created modal
+ */
+function closeWalletCreatedModal() {
+  const modal = document.getElementById('wallet-created-modal');
+  if (modal) {
+    modal.remove();
+  }
+}
+
+/**
+ * Copy text to clipboard
+ */
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    showSnackbar('Address copied to clipboard!', 'success');
+  } catch (error) {
+    console.error('Failed to copy to clipboard:', error);
+    showSnackbar('Failed to copy address', 'error');
+  }
+}
+
+/**
+ * Show funding prompt when user needs to add SOL
+ */
+function showFundingPrompt() {
+  if (!currentUser) return;
+  
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.id = 'funding-prompt-modal';
+  
+  modal.innerHTML = `
+    <div class="modal-content">
+      <div class="modal-header">
+        <span class="material-symbols-outlined" style="color: var(--md-sys-color-warning);">account_balance_wallet</span>
+        <h3>Fund Your In-App Wallet</h3>
+      </div>
+      <div class="modal-body">
+        <div class="funding-content">
+          <div class="balance-status">
+            <div class="balance-item">
+              <label>Current Balance:</label>
+              <span class="balance-value">${DatabaseAPI.formatBalance(currentUser.balance_sol)} SOL</span>
+            </div>
+            <div class="balance-item">
+              <label>Required for Bundlers:</label>
+              <span class="balance-value required">1+ SOL</span>
+            </div>
+          </div>
+          
+          <div class="funding-instructions">
+            <h5>To create bundlers, you need:</h5>
+            <ul class="requirements-list">
+              <li>More than 1 SOL in your in-app wallet</li>
+              <li>Additional SOL for each bundler you create</li>
+              <li>Each bundler requires integer amounts (1, 2, 3 SOL, etc.)</li>
+            </ul>
+          </div>
+          
+          <div class="wallet-address-display">
+            <label>Send SOL to this address:</label>
+            <div class="key-display">
+              <span class="key-text">${DatabaseAPI.truncateAddress(currentUser.in_app_public_key, 8, 8)}</span>
+              <button class="copy-btn" onclick="copyToClipboard('${currentUser.in_app_public_key}')">
+                <span class="material-symbols-outlined">content_copy</span>
+              </button>
+            </div>
+          </div>
+          
+          <div class="modal-actions">
+            <button class="secondary-button" onclick="closeFundingPrompt()">
+              <span class="material-symbols-outlined">close</span>
+              Later
+            </button>
+            <button class="primary-button" onclick="verifyBalance(); closeFundingPrompt();">
+              <span class="material-symbols-outlined">refresh</span>
+              Verify Balance
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+}
+
+/**
+ * Close funding prompt modal
+ */
+function closeFundingPrompt() {
+  const modal = document.getElementById('funding-prompt-modal');
+  if (modal) {
+    modal.remove();
   }
 }
 
@@ -643,9 +814,10 @@ async function createBundler() {
       return;
     }
     
-    // Check if user has sufficient balance
-    if (parseFloat(currentUser.balance_sol) < 1) {
-      showSnackbar('You need at least 1 SOL to create a bundler. Please fund your in-app wallet first.', 'warning');
+    // Check if user has sufficient balance (must be > 1 SOL as per workflow)
+    if (parseFloat(currentUser.balance_sol) <= 1) {
+      showSnackbar('You need more than 1 SOL to create a bundler. Please fund your in-app wallet first.', 'warning');
+      showFundingPrompt();
       return;
     }
     
