@@ -768,7 +768,7 @@ function showBundlerBalanceInput() {
             </div>
             
             <div class="modal-actions">
-              <button class="secondary-button" onclick="closeBundlerBalanceModal(); resolve(null);">
+              <button class="secondary-button" onclick="closeBundlerBalanceModal()">
                 <span class="material-symbols-outlined">close</span>
                 Cancel
               </button>
@@ -864,39 +864,56 @@ function validateBundlerBalanceInput() {
  * Validate and submit bundler balance
  */
 function validateAndSubmitBalance() {
+  console.log('🔄 [DEBUG] validateAndSubmitBalance called');
+  
   const input = document.getElementById('bundler-balance-input');
-  if (!input) return;
+  if (!input) {
+    console.log('❌ [DEBUG] Input element not found');
+    return;
+  }
   
   const value = input.value.trim();
   const maxBalance = Math.floor(parseFloat(currentUser.balance_sol));
   
+  console.log('🔄 [DEBUG] Input value:', value);
+  console.log('🔄 [DEBUG] Max balance:', maxBalance);
+  
   if (!value) {
+    console.log('❌ [DEBUG] No value entered');
     showSnackbar('Please enter a bundler balance', 'warning');
     return;
   }
   
   if (!/^[0-9]+$/.test(value)) {
+    console.log('❌ [DEBUG] Invalid format - not integer');
     showSnackbar('Only whole numbers (integers) are allowed', 'error');
     return;
   }
   
   const balance = parseInt(value);
+  console.log('🔄 [DEBUG] Parsed balance:', balance);
   
   if (balance < 1) {
+    console.log('❌ [DEBUG] Balance too low');
     showSnackbar('Minimum bundler balance is 1 SOL', 'error');
     return;
   }
   
   if (balance > maxBalance) {
+    console.log('❌ [DEBUG] Balance too high');
     showSnackbar(`Maximum available balance is ${maxBalance} SOL`, 'error');
     return;
   }
   
   // Valid balance, close modal and resolve
+  console.log('✅ [DEBUG] Balance valid, closing modal and resolving');
   closeBundlerBalanceModal();
   if (window.bundlerBalanceResolve) {
+    console.log('✅ [DEBUG] Calling resolve with balance:', balance);
     window.bundlerBalanceResolve(balance);
     window.bundlerBalanceResolve = null;
+  } else {
+    console.log('❌ [DEBUG] bundlerBalanceResolve not found!');
   }
 }
 
@@ -904,15 +921,23 @@ function validateAndSubmitBalance() {
  * Close bundler balance input modal
  */
 function closeBundlerBalanceModal() {
+  console.log('🔄 [DEBUG] closeBundlerBalanceModal called');
+  
   const modal = document.getElementById('bundler-balance-modal');
   if (modal) {
+    console.log('✅ [DEBUG] Modal found, removing...');
     modal.remove();
+  } else {
+    console.log('❌ [DEBUG] Modal not found');
   }
   
   // Clean up resolve function
   if (window.bundlerBalanceResolve) {
+    console.log('🧹 [DEBUG] Cleaning up resolve function with null');
     window.bundlerBalanceResolve(null);
     window.bundlerBalanceResolve = null;
+  } else {
+    console.log('🧹 [DEBUG] No resolve function to clean up');
   }
 }
 
@@ -1066,8 +1091,14 @@ async function createBundler() {
     }
     
     // Show bundler balance input modal
+    console.log('🔄 [DEBUG] Showing bundler balance input modal...');
     const balance = await showBundlerBalanceInput();
-    if (!balance) return; // User cancelled or invalid input
+    console.log('📥 [DEBUG] Received balance from modal:', balance);
+    
+    if (!balance) {
+      console.log('❌ [DEBUG] No balance received, user cancelled or invalid input');
+      return; // User cancelled or invalid input
+    }
     
     // Generate idempotency key for reliability
     const idempotencyKey = generateIdempotencyKey();
