@@ -868,53 +868,51 @@ function validateAndSubmitBalance() {
   
   const input = document.getElementById('bundler-balance-input');
   if (!input) {
-    console.log('❌ [DEBUG] Input element not found');
+    console.error('❌ [DEBUG] bundler-balance-input not found');
     return;
   }
   
   const value = input.value.trim();
   const maxBalance = Math.floor(parseFloat(currentUser.balance_sol));
   
-  console.log('🔄 [DEBUG] Input value:', value);
-  console.log('🔄 [DEBUG] Max balance:', maxBalance);
-  
   if (!value) {
-    console.log('❌ [DEBUG] No value entered');
     showSnackbar('Please enter a bundler balance', 'warning');
     return;
   }
   
   if (!/^[0-9]+$/.test(value)) {
-    console.log('❌ [DEBUG] Invalid format - not integer');
     showSnackbar('Only whole numbers (integers) are allowed', 'error');
     return;
   }
   
   const balance = parseInt(value);
-  console.log('🔄 [DEBUG] Parsed balance:', balance);
   
   if (balance < 1) {
-    console.log('❌ [DEBUG] Balance too low');
     showSnackbar('Minimum bundler balance is 1 SOL', 'error');
     return;
   }
   
   if (balance > maxBalance) {
-    console.log('❌ [DEBUG] Balance too high');
     showSnackbar(`Maximum available balance is ${maxBalance} SOL`, 'error');
     return;
   }
   
   // Valid balance, close modal and resolve
-  console.log('✅ [DEBUG] Balance valid, closing modal and resolving');
-  closeBundlerBalanceModal();
+  console.log('✅ [DEBUG] Valid balance entered:', balance);
+  console.log('✅ [DEBUG] Resolving promise with balance:', balance);
+  
+  // Set flag to indicate successful submission
+  window.bundlerBalanceSubmitted = true;
+  
   if (window.bundlerBalanceResolve) {
-    console.log('✅ [DEBUG] Calling resolve with balance:', balance);
+    console.log('✅ [DEBUG] Calling resolve function');
     window.bundlerBalanceResolve(balance);
     window.bundlerBalanceResolve = null;
   } else {
-    console.log('❌ [DEBUG] bundlerBalanceResolve not found!');
+    console.error('❌ [DEBUG] bundlerBalanceResolve function not found');
   }
+  
+  closeBundlerBalanceModal();
 }
 
 /**
@@ -925,20 +923,22 @@ function closeBundlerBalanceModal() {
   
   const modal = document.getElementById('bundler-balance-modal');
   if (modal) {
-    console.log('✅ [DEBUG] Modal found, removing...');
+    console.log('✅ [DEBUG] Removing modal from DOM');
     modal.remove();
   } else {
-    console.log('❌ [DEBUG] Modal not found');
+    console.log('❌ [DEBUG] Modal not found in DOM');
   }
   
-  // Clean up resolve function
-  if (window.bundlerBalanceResolve) {
-    console.log('🧹 [DEBUG] Cleaning up resolve function with null');
+  // Clean up resolve function only if called from cancel
+  // Don't resolve with null if called from successful submission
+  if (window.bundlerBalanceResolve && !window.bundlerBalanceSubmitted) {
+    console.log('🔄 [DEBUG] User cancelled, resolving with null');
     window.bundlerBalanceResolve(null);
     window.bundlerBalanceResolve = null;
-  } else {
-    console.log('🧹 [DEBUG] No resolve function to clean up');
   }
+  
+  // Reset the submitted flag
+  window.bundlerBalanceSubmitted = false;
 }
 
 /**
@@ -1091,7 +1091,7 @@ async function createBundler() {
     }
     
     // Show bundler balance input modal
-    console.log('🔄 [DEBUG] Showing bundler balance input modal...');
+    console.log('🔄 [DEBUG] Showing bundler balance input modal');
     const balance = await showBundlerBalanceInput();
     console.log('📥 [DEBUG] Received balance from modal:', balance);
     
