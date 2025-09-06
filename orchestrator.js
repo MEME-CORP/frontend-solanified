@@ -25,8 +25,11 @@ async function makeOrchestratorRequest(endpoint, method = 'POST', data = null, t
     
     const config = {
       method,
+      mode: 'cors',
+      credentials: 'omit',
       headers: {
         'Content-Type': 'application/json',
+        'Accept': 'application/json',
       },
       signal: controller.signal
     };
@@ -74,7 +77,17 @@ async function makeOrchestratorRequest(endpoint, method = 'POST', data = null, t
     }
     
     if (error.name === 'TypeError' && error.message.includes('fetch')) {
-      throw new Error('Network error. Please check your connection and try again.');
+      console.error('🚨 [ORCHESTRATOR] Potential CORS issue detected!');
+      console.error('🚨 [ORCHESTRATOR] Error details:', {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      });
+      console.error('🔧 [ORCHESTRATOR] To fix CORS, your backend needs these headers:');
+      console.error('   Access-Control-Allow-Origin: *');
+      console.error('   Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+      console.error('   Access-Control-Allow-Headers: Content-Type, Accept');
+      throw new Error('CORS error: Backend is not allowing requests from this domain. Check backend CORS configuration.');
     }
     
     throw error;
@@ -403,25 +416,89 @@ window.OrchestratorAPI = {
   setupNotificationListener,
   
   // Utility
-  makeOrchestratorRequest
+  makeOrchestratorRequest,
+  
+  // Debug utilities
+  testOrchestratorConnectivity
 };
 
 console.log('🔗 Orchestrator API loaded successfully');
 console.log('🔗 Base URL:', ORCHESTRATOR_BASE_URL);
 console.log('🔗 Available functions:', Object.keys(window.OrchestratorAPI || {}));
 
-// Test basic connectivity to orchestrator
-fetch(ORCHESTRATOR_BASE_URL, { 
-  method: 'HEAD',
-  mode: 'cors'
-})
-.then(response => {
-  console.log('✅ [CONNECTIVITY] Orchestrator reachable:', response.status);
-})
-.catch(error => {
-  console.log('❌ [CONNECTIVITY] Orchestrator connection failed:', error.message);
-  console.log('❌ [CONNECTIVITY] This may indicate CORS issues or server downtime');
-});
+// Test basic connectivity and CORS configuration
+async function testOrchestratorConnectivity() {
+  console.log('🧪 [CORS_TEST] Testing orchestrator connectivity and CORS...');
+  console.log('🧪 [CORS_TEST] Target URL:', ORCHESTRATOR_BASE_URL);
+  console.log('🧪 [CORS_TEST] Current origin:', window.location.origin);
+  
+  try {
+    // Test 1: Basic connectivity with HEAD request
+    console.log('🧪 [CORS_TEST] Test 1: Basic connectivity (HEAD request)...');
+    const headResponse = await fetch(ORCHESTRATOR_BASE_URL, { 
+      method: 'HEAD',
+      mode: 'cors',
+      credentials: 'omit'
+    });
+    console.log('✅ [CORS_TEST] HEAD request successful:', headResponse.status);
+    console.log('✅ [CORS_TEST] Response headers:', Object.fromEntries(headResponse.headers.entries()));
+    
+    // Test 2: GET request to check if API responds
+    console.log('🧪 [CORS_TEST] Test 2: GET request to base URL...');
+    const getResponse = await fetch(ORCHESTRATOR_BASE_URL, { 
+      method: 'GET',
+      mode: 'cors',
+      credentials: 'omit',
+      headers: {
+        'Accept': 'application/json'
+      }
+    });
+    console.log('✅ [CORS_TEST] GET request status:', getResponse.status);
+    
+    // Test 3: OPTIONS preflight request simulation
+    console.log('🧪 [CORS_TEST] Test 3: OPTIONS preflight request...');
+    const optionsResponse = await fetch(`${ORCHESTRATOR_BASE_URL}/api/orchestrator/create-bundler`, { 
+      method: 'OPTIONS',
+      mode: 'cors',
+      credentials: 'omit',
+      headers: {
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'Content-Type'
+      }
+    });
+    console.log('✅ [CORS_TEST] OPTIONS request status:', optionsResponse.status);
+    console.log('✅ [CORS_TEST] CORS headers:', {
+      'Access-Control-Allow-Origin': optionsResponse.headers.get('Access-Control-Allow-Origin'),
+      'Access-Control-Allow-Methods': optionsResponse.headers.get('Access-Control-Allow-Methods'),
+      'Access-Control-Allow-Headers': optionsResponse.headers.get('Access-Control-Allow-Headers'),
+      'Access-Control-Max-Age': optionsResponse.headers.get('Access-Control-Max-Age')
+    });
+    
+    console.log('🎉 [CORS_TEST] All connectivity tests passed! CORS should be working.');
+    
+  } catch (error) {
+    console.error('❌ [CORS_TEST] Connectivity test failed:', error);
+    console.error('❌ [CORS_TEST] Error type:', error.name);
+    console.error('❌ [CORS_TEST] Error message:', error.message);
+    
+    if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      console.error('🚨 [CORS_TEST] DIAGNOSIS: Network/CORS error detected!');
+      console.error('🚨 [CORS_TEST] Possible causes:');
+      console.error('   1. Backend server is down or unreachable');
+      console.error('   2. CORS is not properly configured on the backend');
+      console.error('   3. Backend is not allowing requests from origin:', window.location.origin);
+      console.error('   4. Firewall or network blocking the connection');
+      
+      console.error('🔧 [CORS_TEST] Backend needs these CORS headers:');
+      console.error('   Access-Control-Allow-Origin: * (or specific origin)');
+      console.error('   Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+      console.error('   Access-Control-Allow-Headers: Content-Type, Accept');
+    }
+  }
+}
+
+// Run connectivity test
+testOrchestratorConnectivity();
 
 // Auto-setup notification listener when DOM is ready
 if (document.readyState === 'loading') {
