@@ -1198,8 +1198,22 @@ function showTokenCreationForm() {
               <textarea id="token-description" rows="3" maxlength="500"></textarea>
             </div>
             <div class="form-group">
-              <label for="token-logo">Logo (Base64 or URL)</label>
-              <input type="text" id="token-logo" placeholder="data:image/png;base64,... or https://...">
+              <label for="token-logo">Logo (PNG or JPG only)</label>
+              <input 
+                type="file" 
+                id="token-logo" 
+                accept=".png,.jpg,.jpeg,image/png,image/jpeg"
+                class="file-input"
+              >
+              <div class="file-help">
+                Only PNG and JPG files are allowed. Maximum size: 2MB
+              </div>
+              <div class="logo-preview" id="logo-preview" style="display: none;">
+                <img id="logo-preview-img" alt="Logo preview" />
+                <button type="button" class="remove-logo" onclick="removeLogo()">
+                  <span class="material-symbols-outlined">close</span>
+                </button>
+              </div>
             </div>
             <div class="form-row">
               <div class="form-group">
@@ -1243,6 +1257,72 @@ function showTokenCreationForm() {
   
   // Add form submit handler
   document.getElementById('token-creation-form').addEventListener('submit', handleTokenCreation);
+  
+  // Add file input change handler
+  document.getElementById('token-logo').addEventListener('change', handleLogoFileChange);
+}
+
+/**
+ * Handle logo file selection and validation
+ */
+function handleLogoFileChange(event) {
+  const file = event.target.files[0];
+  const preview = document.getElementById('logo-preview');
+  const previewImg = document.getElementById('logo-preview-img');
+  
+  if (!file) {
+    preview.style.display = 'none';
+    return;
+  }
+  
+  // Validate file type
+  const validTypes = ['image/png', 'image/jpeg', 'image/jpg'];
+  if (!validTypes.includes(file.type)) {
+    showSnackbar('Only PNG and JPG files are allowed', 'error');
+    event.target.value = '';
+    preview.style.display = 'none';
+    return;
+  }
+  
+  // Validate file size (2MB max)
+  const maxSize = 2 * 1024 * 1024; // 2MB in bytes
+  if (file.size > maxSize) {
+    showSnackbar('File size must be less than 2MB', 'error');
+    event.target.value = '';
+    preview.style.display = 'none';
+    return;
+  }
+  
+  // Show preview
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    previewImg.src = e.target.result;
+    preview.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+}
+
+/**
+ * Remove selected logo
+ */
+function removeLogo() {
+  const fileInput = document.getElementById('token-logo');
+  const preview = document.getElementById('logo-preview');
+  
+  fileInput.value = '';
+  preview.style.display = 'none';
+}
+
+/**
+ * Convert file to base64 string
+ */
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = error => reject(error);
+    reader.readAsDataURL(file);
+  });
 }
 
 /**
@@ -1262,13 +1342,38 @@ async function handleTokenCreation(event) {
   event.preventDefault();
   
   try {
-    const formData = new FormData(event.target);
+    // Get logo file and convert to base64 if present
+    const logoFile = document.getElementById('token-logo').files[0];
+    let logoBase64 = '';
+    
+    if (logoFile) {
+      // Validate file again before processing
+      const validTypes = ['image/png', 'image/jpeg', 'image/jpg'];
+      if (!validTypes.includes(logoFile.type)) {
+        showSnackbar('Only PNG and JPG files are allowed', 'error');
+        return;
+      }
+      
+      const maxSize = 2 * 1024 * 1024; // 2MB
+      if (logoFile.size > maxSize) {
+        showSnackbar('File size must be less than 2MB', 'error');
+        return;
+      }
+      
+      try {
+        logoBase64 = await fileToBase64(logoFile);
+      } catch (error) {
+        console.error('Failed to convert logo to base64:', error);
+        showSnackbar('Failed to process logo file', 'error');
+        return;
+      }
+    }
     
     const tokenData = {
       name: document.getElementById('token-name').value.trim(),
       symbol: document.getElementById('token-symbol').value.trim().toUpperCase(),
       description: document.getElementById('token-description').value.trim(),
-      logoBase64: document.getElementById('token-logo').value.trim(),
+      logoBase64: logoBase64,
       twitter: document.getElementById('token-twitter').value.trim(),
       telegram: document.getElementById('token-telegram').value.trim(),
       website: document.getElementById('token-website').value.trim(),
@@ -1282,10 +1387,26 @@ async function handleTokenCreation(event) {
       return;
     }
     
+    // Double-check that user still has an active bundler
+    const bundlers = await DatabaseAPI.getUserBundlers(currentUser.user_wallet_id);
+    const activeBundler = bundlers.find(b => b.is_active);
+    
+    if (!activeBundler) {
+      showSnackbar('You need an active bundler to create tokens', 'warning');
+      return;
+    }
+    
+    console.log('📤 [TOKEN_CREATION] Sending token creation request:', {
+      user_wallet_id: currentUser.user_wallet_id,
+      tokenData: tokenData
+    });
+    
     closeTokenForm();
     
     // Create token via orchestrator
     const result = await OrchestratorAPI.createAndBuyToken(currentUser.user_wallet_id, tokenData);
+    
+    console.log('📥 [TOKEN_CREATION] API response:', result);
     
     if (result) {
       // Refresh data

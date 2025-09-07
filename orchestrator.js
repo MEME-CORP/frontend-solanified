@@ -241,6 +241,14 @@ async function createAndBuyToken(userWalletId, tokenData) {
       priority_fee: tokenData.priorityFee || '0.000005'
     };
     
+    console.log('📡 [TOKEN_API] Final request data being sent:', {
+      endpoint: '/api/orchestrator/create-and-buy-token-pumpFun',
+      data: {
+        ...requestData,
+        logo_base64: requestData.logo_base64 ? `${requestData.logo_base64.substring(0, 50)}...` : 'empty'
+      }
+    });
+    
     const response = await makeOrchestratorRequest(
       '/api/orchestrator/create-and-buy-token-pumpFun', 
       'POST', 
