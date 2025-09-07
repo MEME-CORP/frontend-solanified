@@ -1213,6 +1213,85 @@ body::before {
   color: var(--md-sys-color-on-surface);
 }
 
+/* Sell Token Button */
+.sell-token-btn {
+  margin-right: var(--spacing-sm);
+  font-size: var(--md-sys-typescale-label-medium);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.sell-token-btn .material-symbols-outlined {
+  font-size: 18px;
+}
+
+/* Sell Token Modal */
+.sell-token-content {
+  text-align: center;
+}
+
+.sell-token-content .token-info {
+  margin-bottom: var(--spacing-xl);
+}
+
+.sell-token-content .info-icon {
+  margin-bottom: var(--spacing-md);
+}
+
+.sell-token-content .info-icon .material-symbols-outlined {
+  font-size: 48px;
+  color: var(--md-sys-color-primary);
+}
+
+.sell-token-content h4 {
+  font: var(--md-sys-typescale-headline-small);
+  color: var(--md-sys-color-on-surface);
+  margin-bottom: var(--spacing-sm);
+}
+
+.sell-token-content p {
+  font: var(--md-sys-typescale-body-medium);
+  color: var(--md-sys-color-on-surface-variant);
+  margin-bottom: 0;
+}
+
+.warning-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  margin: var(--spacing-lg) 0;
+  background-color: var(--md-sys-color-error-container);
+  border-radius: var(--radius-md);
+  border-left: 4px solid var(--md-sys-color-error);
+  text-align: left;
+}
+
+.warning-notice .material-symbols-outlined {
+  color: var(--md-sys-color-error);
+  font-size: 24px;
+  margin-top: 2px;
+}
+
+.warning-notice div {
+  font: var(--md-sys-typescale-body-medium);
+  color: var(--md-sys-color-on-error-container);
+  line-height: 1.5;
+}
+
+.warning-notice strong {
+  color: var(--md-sys-color-error);
+}
+
+.input-help {
+  font: var(--md-sys-typescale-body-small);
+  color: var(--md-sys-color-on-surface-variant);
+  margin-top: var(--spacing-xs);
+  text-align: left;
+}
+
 /* Bundler Success Modal */
 .bundler-success-content {
   text-align: center;

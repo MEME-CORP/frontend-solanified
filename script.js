@@ -407,30 +407,40 @@ async function loadBundlers() {
       return;
     }
     
-    bundlersList.innerHTML = bundlers.map(bundler => `
-      <div class="list-item" data-bundler-id="${bundler.id}">
-        <div class="list-item-icon">
-          <span class="material-symbols-outlined">inventory_2</span>
-        </div>
-        <div class="list-item-content">
-          <div class="list-item-title">${bundler.token_name || 'Unnamed Bundler'}</div>
-          <div class="list-item-subtitle">
-            SOL: ${DatabaseAPI.formatBalance(bundler.total_balance_sol)} | 
-            SPL: ${DatabaseAPI.formatBalance(bundler.total_balance_spl)}
+    bundlersList.innerHTML = bundlers.map(bundler => {
+      const hasSplTokens = parseFloat(bundler.total_balance_spl) > 0;
+      
+      return `
+        <div class="list-item" data-bundler-id="${bundler.id}">
+          <div class="list-item-icon">
+            <span class="material-symbols-outlined">inventory_2</span>
+          </div>
+          <div class="list-item-content">
+            <div class="list-item-title">${bundler.token_name || 'Unnamed Bundler'}</div>
+            <div class="list-item-subtitle">
+              SOL: ${DatabaseAPI.formatBalance(bundler.total_balance_sol)} | 
+              SPL: ${DatabaseAPI.formatBalance(bundler.total_balance_spl)}
+            </div>
+          </div>
+          <div class="list-item-trailing">
+            ${hasSplTokens ? `
+              <button class="secondary-button sell-token-btn" onclick="showSellTokenModal(${bundler.id}, '${bundler.token_name || 'Token'}')">
+                <span class="material-symbols-outlined">sell</span>
+                Sell Token
+              </button>
+            ` : ''}
+            <span class="status-chip ${bundler.is_active ? 'active' : 'inactive'}">
+              ${bundler.is_active ? 'Active' : 'Inactive'}
+            </span>
+            <button class="icon-button" onclick="toggleBundlerStatus(${bundler.id}, ${!bundler.is_active})">
+              <span class="material-symbols-outlined">
+                ${bundler.is_active ? 'pause' : 'play_arrow'}
+              </span>
+            </button>
           </div>
         </div>
-        <div class="list-item-trailing">
-          <span class="status-chip ${bundler.is_active ? 'active' : 'inactive'}">
-            ${bundler.is_active ? 'Active' : 'Inactive'}
-          </span>
-          <button class="icon-button" onclick="toggleBundlerStatus(${bundler.id}, ${!bundler.is_active})">
-            <span class="material-symbols-outlined">
-              ${bundler.is_active ? 'pause' : 'play_arrow'}
-            </span>
-          </button>
-        </div>
-      </div>
-    `).join('');
+      `;
+    }).join('');
     
   } catch (error) {
     console.error('❌ Failed to load bundlers:', error);
@@ -1418,6 +1428,130 @@ async function handleTokenCreation(event) {
   } catch (error) {
     console.error('❌ Failed to create token:', error);
     showSnackbar('Failed to create token', 'error');
+  }
+}
+
+/**
+ * Show sell token modal
+ */
+function showSellTokenModal(bundlerId, tokenName) {
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.id = 'sell-token-modal';
+  
+  modal.innerHTML = `
+    <div class="modal-content">
+      <div class="modal-header">
+        <span class="material-symbols-outlined" style="color: var(--md-sys-color-warning);">sell</span>
+        <h3>Sell Token</h3>
+        <button class="modal-close" onclick="closeSellTokenModal()">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="sell-token-content">
+          <div class="token-info">
+            <div class="info-icon">
+              <span class="material-symbols-outlined">token</span>
+            </div>
+            <h4>Sell ${tokenName} Tokens</h4>
+            <p>Enter the percentage of your SPL tokens you want to sell from this bundler.</p>
+          </div>
+          
+          <div class="form-group">
+            <label for="sell-percentage">Sell Percentage (%)</label>
+            <input 
+              type="number" 
+              id="sell-percentage" 
+              min="1" 
+              max="100" 
+              step="1" 
+              value="50"
+              placeholder="Enter percentage (1-100)"
+            >
+            <div class="input-help">
+              Enter a value between 1% and 100% of your SPL token balance
+            </div>
+          </div>
+          
+          <div class="warning-notice">
+            <span class="material-symbols-outlined">warning</span>
+            <div>
+              <strong>Important:</strong> This action will sell your SPL tokens and cannot be undone. 
+              Make sure you want to proceed with this sale.
+            </div>
+          </div>
+          
+          <div class="modal-actions">
+            <button class="secondary-button" onclick="closeSellTokenModal()">
+              <span class="material-symbols-outlined">close</span>
+              Cancel
+            </button>
+            <button class="primary-button" onclick="handleSellToken(${bundlerId})">
+              <span class="material-symbols-outlined">sell</span>
+              Sell Tokens
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+  
+  // Focus on the percentage input
+  setTimeout(() => {
+    document.getElementById('sell-percentage').focus();
+  }, 100);
+}
+
+/**
+ * Close sell token modal
+ */
+function closeSellTokenModal() {
+  const modal = document.getElementById('sell-token-modal');
+  if (modal) {
+    modal.remove();
+  }
+}
+
+/**
+ * Handle sell token action
+ */
+async function handleSellToken(bundlerId) {
+  try {
+    const percentageInput = document.getElementById('sell-percentage');
+    const sellPercent = parseInt(percentageInput.value);
+    
+    // Validate percentage
+    if (!sellPercent || sellPercent < 1 || sellPercent > 100) {
+      showSnackbar('Please enter a valid percentage between 1 and 100', 'error');
+      return;
+    }
+    
+    // Close modal
+    closeSellTokenModal();
+    
+    console.log('📤 [SELL_TOKEN] Initiating sell request:', {
+      user_wallet_id: currentUser.user_wallet_id,
+      bundler_id: bundlerId,
+      sell_percent: sellPercent
+    });
+    
+    // Call the sell token API
+    const result = await OrchestratorAPI.sellToken(currentUser.user_wallet_id, sellPercent);
+    
+    if (result) {
+      // Refresh data to show updated balances
+      await refreshUserData();
+      await loadBundlers();
+      
+      console.log('✅ [SELL_TOKEN] Sell completed successfully:', result);
+    }
+    
+  } catch (error) {
+    console.error('❌ Failed to sell token:', error);
+    showSnackbar('Failed to sell token', 'error');
   }
 }
 
