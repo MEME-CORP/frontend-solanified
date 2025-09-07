@@ -403,18 +403,21 @@ async function loadBundlers() {
     
     const bundlers = await DatabaseAPI.getUserBundlers(currentUser.user_wallet_id);
     
-    if (bundlers.length === 0) {
+    // Filter out inactive bundlers - only show active ones
+    const activeBundlers = bundlers.filter(bundler => bundler.is_active);
+    
+    if (activeBundlers.length === 0) {
       bundlersList.innerHTML = `
         <div class="empty-state">
           <span class="material-symbols-outlined">inventory_2</span>
-          <p>No bundlers found</p>
+          <p>No active bundlers found</p>
           <button onclick="createBundler()" class="empty-action-btn">Create your first bundler</button>
         </div>
       `;
       return;
     }
     
-    bundlersList.innerHTML = bundlers.map(bundler => {
+    bundlersList.innerHTML = activeBundlers.map(bundler => {
       const hasSplTokens = parseFloat(bundler.total_balance_spl) > 0;
       
       return `
@@ -436,12 +439,12 @@ async function loadBundlers() {
                 Sell Token
               </button>
             ` : ''}
-            <span class="status-chip ${bundler.is_active ? 'active' : 'inactive'}">
-              ${bundler.is_active ? 'Active' : 'Inactive'}
+            <span class="status-chip active">
+              Active
             </span>
-            <button class="icon-button" onclick="toggleBundlerStatus(${bundler.id}, ${!bundler.is_active})">
+            <button class="icon-button" onclick="toggleBundlerStatus(${bundler.id}, false)">
               <span class="material-symbols-outlined">
-                ${bundler.is_active ? 'pause' : 'play_arrow'}
+                pause
               </span>
             </button>
           </div>
