@@ -1566,6 +1566,21 @@ async function handleSellToken(bundlerId) {
  * Show sell SPL token modal
  */
 function showSellSplTokenModal() {
+  console.log('🔄 [SELL_SPL_TOKEN] showSellSplTokenModal called');
+  console.log('🔄 [SELL_SPL_TOKEN] Current user:', currentUser);
+  console.log('🔄 [SELL_SPL_TOKEN] OrchestratorAPI available:', !!OrchestratorAPI);
+  
+  // Check if user has SPL tokens
+  if (currentUser) {
+    const splBalance = parseFloat(currentUser.balance_spl || 0);
+    console.log('🔄 [SELL_SPL_TOKEN] User SPL balance:', splBalance);
+    
+    if (splBalance <= 0) {
+      showSnackbar('You have no SPL tokens to sell', 'warning');
+      return;
+    }
+  }
+  
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
   modal.id = 'sell-spl-token-modal';
@@ -1618,7 +1633,7 @@ function showSellSplTokenModal() {
               <span class="material-symbols-outlined">close</span>
               Cancel
             </button>
-            <button class="primary-button" onclick="handleSellSplToken()">
+            <button class="primary-button" onclick="console.log('🔵 [DEBUG] Sell SPL Tokens button clicked!'); handleSellSplToken();">
               <span class="material-symbols-outlined">sell</span>
               Sell SPL Tokens
             </button>
@@ -1651,32 +1666,71 @@ function closeSellSplTokenModal() {
  */
 async function handleSellSplToken() {
   try {
+    console.log('🔄 [SELL_SPL_TOKEN] Starting sell SPL token process...');
+    console.log('🔄 [SELL_SPL_TOKEN] Current user:', currentUser);
+    console.log('🔄 [SELL_SPL_TOKEN] OrchestratorAPI available:', !!OrchestratorAPI);
+    console.log('🔄 [SELL_SPL_TOKEN] sellSplFromWallet function available:', !!OrchestratorAPI?.sellSplFromWallet);
+    
+    // Check if user is properly initialized
+    if (!currentUser) {
+      console.error('❌ [SELL_SPL_TOKEN] currentUser is null or undefined');
+      showSnackbar('Please connect your wallet and create an in-app wallet first', 'error');
+      return;
+    }
+    
+    // Check if OrchestratorAPI is available
+    if (!OrchestratorAPI || !OrchestratorAPI.sellSplFromWallet) {
+      console.error('❌ [SELL_SPL_TOKEN] OrchestratorAPI or sellSplFromWallet function is not available');
+      showSnackbar('API service not available. Please refresh the page', 'error');
+      return;
+    }
+    
     const percentageInput = document.getElementById('sell-spl-percentage');
+    if (!percentageInput) {
+      console.error('❌ [SELL_SPL_TOKEN] Percentage input not found');
+      showSnackbar('Form error. Please try again', 'error');
+      return;
+    }
+    
     const sellPercent = parseInt(percentageInput.value);
+    console.log('🔄 [SELL_SPL_TOKEN] Sell percentage:', sellPercent);
     
     // Validate percentage
     if (!sellPercent || sellPercent < 1 || sellPercent > 100) {
+      console.error('❌ [SELL_SPL_TOKEN] Invalid percentage:', sellPercent);
       showSnackbar('Please enter a valid percentage between 1 and 100', 'error');
       return;
     }
+    
+    console.log('✅ [SELL_SPL_TOKEN] All validations passed, closing modal and calling API...');
     
     // Close modal
     closeSellSplTokenModal();
     
     // Call the orchestrator API
+    console.log('📡 [SELL_SPL_TOKEN] Calling API with:', {
+      userWalletId: currentUser.user_wallet_id,
+      sellPercent: sellPercent
+    });
+    
     const result = await OrchestratorAPI.sellSplFromWallet(currentUser.user_wallet_id, sellPercent);
     
     if (result) {
+      console.log('✅ [SELL_SPL_TOKEN] API call successful, refreshing data...');
+      
       // Refresh data to show updated balances
       await refreshUserData();
       await loadDashboardData();
       
       console.log('✅ [SELL_SPL_TOKEN] Sell completed successfully:', result);
+    } else {
+      console.error('❌ [SELL_SPL_TOKEN] API call returned null/undefined result');
     }
     
   } catch (error) {
-    console.error('❌ Failed to sell SPL tokens:', error);
-    showSnackbar('Failed to sell SPL tokens', 'error');
+    console.error('❌ [SELL_SPL_TOKEN] Error in handleSellSplToken:', error);
+    console.error('❌ [SELL_SPL_TOKEN] Error stack:', error.stack);
+    showSnackbar('Failed to sell SPL tokens: ' + error.message, 'error');
   }
 }
 

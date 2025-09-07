@@ -299,19 +299,30 @@ async function sellToken(userWalletId, sellPercent) {
  */
 async function sellSplFromWallet(userWalletId, sellPercent) {
   try {
-    showLoadingOverlay(true, `Selling ${sellPercent}% of SPL tokens from wallet...`);
-    
-    const response = await makeOrchestratorRequest('/api/orchestrator/sell-spl-from-wallet', 'POST', {
-      user_wallet_id: userWalletId,
-      sell_percent: sellPercent
+    console.log('📡 [ORCHESTRATOR] sellSplFromWallet called with:', {
+      userWalletId,
+      sellPercent,
+      endpoint: '/api/orchestrator/sell-spl-from-wallet'
     });
     
-    console.log('✅ SPL tokens sold successfully:', response);
+    showLoadingOverlay(true, `Selling ${sellPercent}% of SPL tokens from wallet...`);
+    
+    const requestData = {
+      user_wallet_id: userWalletId,
+      sell_percent: sellPercent
+    };
+    
+    console.log('📡 [ORCHESTRATOR] Making request with data:', requestData);
+    
+    const response = await makeOrchestratorRequest('/api/orchestrator/sell-spl-from-wallet', 'POST', requestData);
+    
+    console.log('✅ [ORCHESTRATOR] SPL tokens sold successfully:', response);
     showSnackbar(`Successfully sold ${sellPercent}% of SPL tokens!`, 'success');
     
     return response;
     
   } catch (error) {
+    console.error('❌ [ORCHESTRATOR] Error in sellSplFromWallet:', error);
     handleOrchestratorError(error, 'sell SPL tokens from wallet');
     return null;
   } finally {
