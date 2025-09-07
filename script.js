@@ -234,6 +234,7 @@ function updateBalanceDisplay(solBalance, splBalance) {
   const splBalanceEl = document.getElementById('spl-balance');
   const profileSolEl = document.getElementById('profile-sol');
   const profileSplEl = document.getElementById('profile-spl');
+  const sellSplBtn = document.getElementById('sell-spl-btn');
   
   const formattedSol = DatabaseAPI.formatBalance(solBalance);
   const formattedSpl = DatabaseAPI.formatBalance(splBalance);
@@ -242,6 +243,12 @@ function updateBalanceDisplay(solBalance, splBalance) {
   if (splBalanceEl) splBalanceEl.textContent = formattedSpl;
   if (profileSolEl) profileSolEl.textContent = formattedSol;
   if (profileSplEl) profileSplEl.textContent = formattedSpl;
+  
+  // Show/hide sell SPL button based on SPL balance
+  if (sellSplBtn) {
+    const hasSplTokens = parseFloat(splBalance) > 0;
+    sellSplBtn.style.display = hasSplTokens ? 'flex' : 'none';
+  }
 }
 
 /**
@@ -1552,6 +1559,124 @@ async function handleSellToken(bundlerId) {
   } catch (error) {
     console.error('❌ Failed to sell token:', error);
     showSnackbar('Failed to sell token', 'error');
+  }
+}
+
+/**
+ * Show sell SPL token modal
+ */
+function showSellSplTokenModal() {
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.id = 'sell-spl-token-modal';
+  
+  modal.innerHTML = `
+    <div class="modal-content">
+      <div class="modal-header">
+        <span class="material-symbols-outlined" style="color: var(--md-sys-color-warning);">sell</span>
+        <h3>Sell SPL Tokens</h3>
+        <button class="modal-close" onclick="closeSellSplTokenModal()">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="sell-token-content">
+          <div class="token-info">
+            <div class="info-icon">
+              <span class="material-symbols-outlined">token</span>
+            </div>
+            <h4>Sell SPL Tokens from In-App Wallet</h4>
+            <p>Enter the percentage of your SPL tokens you want to sell from your in-app wallet.</p>
+          </div>
+          
+          <div class="form-group">
+            <label for="sell-spl-percentage">Sell Percentage (%)</label>
+            <input 
+              type="number" 
+              id="sell-spl-percentage" 
+              min="1" 
+              max="100" 
+              step="1" 
+              value="50"
+              placeholder="Enter percentage (1-100)"
+            >
+            <div class="input-help">
+              Enter a value between 1% and 100% of your SPL token balance
+            </div>
+          </div>
+          
+          <div class="warning-notice">
+            <span class="material-symbols-outlined">warning</span>
+            <div>
+              <strong>Important:</strong> This action will sell your SPL tokens from your in-app wallet and cannot be undone. 
+              Make sure you want to proceed with this sale.
+            </div>
+          </div>
+          
+          <div class="modal-actions">
+            <button class="secondary-button" onclick="closeSellSplTokenModal()">
+              <span class="material-symbols-outlined">close</span>
+              Cancel
+            </button>
+            <button class="primary-button" onclick="handleSellSplToken()">
+              <span class="material-symbols-outlined">sell</span>
+              Sell SPL Tokens
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+  
+  // Focus on the percentage input
+  setTimeout(() => {
+    document.getElementById('sell-spl-percentage').focus();
+  }, 100);
+}
+
+/**
+ * Close sell SPL token modal
+ */
+function closeSellSplTokenModal() {
+  const modal = document.getElementById('sell-spl-token-modal');
+  if (modal) {
+    modal.remove();
+  }
+}
+
+/**
+ * Handle sell SPL token action
+ */
+async function handleSellSplToken() {
+  try {
+    const percentageInput = document.getElementById('sell-spl-percentage');
+    const sellPercent = parseInt(percentageInput.value);
+    
+    // Validate percentage
+    if (!sellPercent || sellPercent < 1 || sellPercent > 100) {
+      showSnackbar('Please enter a valid percentage between 1 and 100', 'error');
+      return;
+    }
+    
+    // Close modal
+    closeSellSplTokenModal();
+    
+    // Call the orchestrator API
+    const result = await OrchestratorAPI.sellSplFromWallet(currentUser.user_wallet_id, sellPercent);
+    
+    if (result) {
+      // Refresh data to show updated balances
+      await refreshUserData();
+      await loadDashboardData();
+      
+      console.log('✅ [SELL_SPL_TOKEN] Sell completed successfully:', result);
+    }
+    
+  } catch (error) {
+    console.error('❌ Failed to sell SPL tokens:', error);
+    showSnackbar('Failed to sell SPL tokens', 'error');
   }
 }
 

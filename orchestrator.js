@@ -294,6 +294,31 @@ async function sellToken(userWalletId, sellPercent) {
   }
 }
 
+/**
+ * Sell SPL tokens from in-app wallet
+ */
+async function sellSplFromWallet(userWalletId, sellPercent) {
+  try {
+    showLoadingOverlay(true, `Selling ${sellPercent}% of SPL tokens from wallet...`);
+    
+    const response = await makeOrchestratorRequest('/api/orchestrator/sell-spl-from-wallet', 'POST', {
+      user_wallet_id: userWalletId,
+      sell_percent: sellPercent
+    });
+    
+    console.log('✅ SPL tokens sold successfully:', response);
+    showSnackbar(`Successfully sold ${sellPercent}% of SPL tokens!`, 'success');
+    
+    return response;
+    
+  } catch (error) {
+    handleOrchestratorError(error, 'sell SPL tokens from wallet');
+    return null;
+  } finally {
+    showLoadingOverlay(false);
+  }
+}
+
 // ========== TRANSFER OPERATIONS ==========
 
 /**
@@ -415,6 +440,7 @@ window.OrchestratorAPI = {
   // Token operations
   createAndBuyToken,
   sellToken,
+  sellSplFromWallet,
   
   // Transfer operations
   transferToOwner,
