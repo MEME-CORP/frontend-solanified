@@ -1,12 +1,14 @@
-# Standard Dependencies and Build Output
+# Dependencies
 /node_modules
+
+# Build Output
 /dist
 /build
 
-# Environment and sensitive config
+# Environment Variables
 .env
 .env.*
 
-# OS/Editor Files
+# VS Code/OS files
 .DS_Store
 .vscode/
