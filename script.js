@@ -19,10 +19,12 @@ let isDevWalletPolling = false;
 let bundlerProgressInterval = null;
 let bundlerProgressModal = null;
 let bundlerProgressPhase = 0;
+let currentTheme = 'light';
 
 const DEV_WALLET_POLL_INTERVAL_MS = 20000;
 const BUNDLER_PROGRESS_STEP_DURATION_MS = 90000;
 const DEV_WALLET_REQUIRED_MESSAGE = 'Your developer wallet is still being set up. Please wait a moment.';
+const THEME_STORAGE_KEY = 'solanafied-theme';
 
 // ========== LONG-RUN OPERATION HELPERS ==========
 
@@ -397,6 +399,20 @@ function updateBalanceDisplay(solBalance, splBalance) {
   }
 }
 
+function initializeTheme() {
+  const storedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  currentTheme = storedTheme || (prefersDark ? 'dark' : 'light');
+  applyTheme(currentTheme, false);
+
+  const themeToggleBtn = document.getElementById('theme-toggle');
+  if (themeToggleBtn && !themeToggleBtn.dataset.initialized) {
+    themeToggleBtn.addEventListener('click', toggleTheme);
+    themeToggleBtn.dataset.initialized = 'true';
+    updateThemeToggleIcon();
+  }
+}
+
 /**
  * Show/hide dashboard
  */
@@ -592,7 +608,7 @@ async function loadBundlers() {
           </div>
           <div class="list-item-trailing">
             ${hasSplTokens ? `
-              <button class="secondary-button sell-token-btn" onclick="showSellTokenModal(${bundler.id}, '${bundler.token_name || 'Token'}')">
+              <button class="secondary-button sell-token-btn" onclick="showSellSplTokenModal(${bundler.id})">
                 <span class="material-symbols-outlined">sell</span>
                 Sell Token
               </button>
