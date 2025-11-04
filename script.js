@@ -1505,7 +1505,26 @@ async function transferToOwner() {
 }
 
 /**
- * Copy in-app wallet address to clipboard
+ * Copy connected wallet address to clipboard
+ */
+async function copyAddress() {
+  try {
+    const walletAddress = currentWallet?.publicKey?.toString();
+    if (!walletAddress) {
+      showSnackbar('Connect a wallet first', 'warning');
+      return;
+    }
+
+    await navigator.clipboard.writeText(walletAddress);
+    showSnackbar('Wallet address copied to clipboard', 'success');
+  } catch (error) {
+    console.error('❌ Failed to copy wallet address:', error);
+    showSnackbar('Failed to copy wallet address', 'error');
+  }
+}
+
+/**
+ * Copy distributor wallet address to clipboard
  */
 async function copyDistributorAddress() {
   try {
