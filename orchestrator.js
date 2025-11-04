@@ -7,9 +7,17 @@
 
 // ========== ORCHESTRATOR CONFIGURATION ==========
 
-const ORCHESTRATOR_BASE_URL = 'https://orquestador-solanified.onrender.com';
+const ORCHESTRATOR_BASE_URL = 'https://orquestador-solanified-6a92.onrender.com';
 const API_TIMEOUT = 30000; // 30 seconds for most operations
-const LONG_API_TIMEOUT = 120000; // 2 minutes for token creation operations
+const LONG_API_TIMEOUT = 120000; // 2 minutes baseline for long operations
+
+function getBundlerTimeoutMs(bundlerBalance) {
+  const parsedBalance = Number.parseFloat(bundlerBalance);
+  if (Number.isNaN(parsedBalance) || parsedBalance <= 0) {
+    return API_TIMEOUT * 4; // fallback of ~2 minutes
+  }
+  return Math.ceil(parsedBalance) * 150000;
+}
 
 // ========== UTILITY FUNCTIONS ==========
 
@@ -125,26 +133,26 @@ function handleOrchestratorError(error, operation) {
 // ========== WALLET OPERATIONS ==========
 
 /**
- * Create in-app wallet for user
+ * Create distributor (funding) wallet for user
  */
 async function createInAppWallet(userWalletId) {
   try {
-    showLoadingOverlay(true, 'Creating in-app wallet...');
+    showLoadingOverlay(true, 'Creating funding wallet...');
     
     const response = await makeOrchestratorRequest('/api/orchestrator/create-wallet-in-app', 'POST', {
       user_wallet_id: userWalletId
     });
     
-    console.log('✅ In-app wallet created successfully:', response);
-    showSnackbar('In-app wallet created successfully!', 'success');
+    console.log('✅ Distributor wallet created successfully:', response);
+    showSnackbar('Distributor wallet created successfully!', 'success');
     
     return {
-      inAppPublicKey: response.in_app_public_key,
-      balanceSol: response.balance_sol
+      distributorPublicKey: response.distributor_public_key,
+      balanceSol: response.distributor_balance_sol
     };
     
   } catch (error) {
-    handleOrchestratorError(error, 'create in-app wallet');
+    handleOrchestratorError(error, 'create distributor wallet');
     return null;
   } finally {
     showLoadingOverlay(false);
@@ -152,7 +160,7 @@ async function createInAppWallet(userWalletId) {
 }
 
 /**
- * Verify and update in-app SOL balance
+ * Verify and update distributor wallet SOL balance
  */
 async function verifyInAppBalance(userWalletId) {
   try {
@@ -168,7 +176,7 @@ async function verifyInAppBalance(userWalletId) {
     
     return {
       userWalletId: response.user_wallet_id,
-      inAppPublicKey: response.in_app_public_key,
+      distributorPublicKey: response.distributor_public_key,
       previousBalance: response.previous_balance_sol,
       currentBalance: response.current_balance_sol,
       balanceUpdated: response.balance_updated
@@ -198,7 +206,12 @@ async function createBundler(userWalletId, bundlerBalance, idempotencyKey = null
       requestData.idempotency_key = idempotencyKey;
     }
     
-    const response = await makeOrchestratorRequest('/api/orchestrator/create-bundler', 'POST', requestData);
+    const response = await makeOrchestratorRequest(
+      '/api/orchestrator/create-bundler',
+      'POST',
+      requestData,
+      getBundlerTimeoutMs(requestData.bundler_balance)
+    );
     
     console.log('✅ Bundler created successfully:', response);
     showSnackbar(`Bundler created with ${response.total_balance_sol} SOL!`, 'success');
@@ -262,6 +275,11 @@ async function createAndBuyToken(userWalletId, tokenData) {
     return response;
     
   } catch (error) {
+    if (error && typeof error.message === 'string' && error.message.includes('DEV_WALLET_NOT_READY')) {
+      const devWalletError = new Error('Developer wallet is not ready. Please wait a minute and try again.');
+      devWalletError.code = 'DEV_WALLET_NOT_READY';
+      throw devWalletError;
+    }
     handleOrchestratorError(error, 'create and buy token');
     return null;
   } finally {
@@ -371,10 +389,10 @@ function handleBackendNotification(notification) {
     case 'WALLET_CREATED':
       console.log('✅ [NOTIFICATION] Wallet creation notification:', {
         userWalletId: user_wallet_id,
-        inAppPublicKey: notification.in_app_public_key
+        distributorPublicKey: notification.distributor_public_key
       });
       
-      showSnackbar('In-app wallet created successfully!', 'success');
+      showSnackbar('Distributor wallet created successfully!', 'success');
       
       // Refresh user data if this is for current user
       if (window.currentUser && window.currentUser.user_wallet_id === user_wallet_id) {
@@ -399,7 +417,7 @@ function handleBackendNotification(notification) {
       break;
       
     case 'BALANCE_UPDATED':
-      showSnackbar('Balance updated successfully!', 'success');
+      showSnackbar('Distributor wallet balance updated successfully!', 'success');
       if (typeof updateWalletBalance === 'function') {
         updateWalletBalance();
       }

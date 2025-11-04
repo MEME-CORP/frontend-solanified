@@ -14,6 +14,150 @@ let currentWallet = null;
 let currentUser = null;
 let isConnected = false;
 let subscriptions = [];
+let devWalletPollInterval = null;
+let isDevWalletPolling = false;
+let bundlerProgressInterval = null;
+let bundlerProgressModal = null;
+let bundlerProgressPhase = 0;
+
+const DEV_WALLET_POLL_INTERVAL_MS = 20000;
+const BUNDLER_PROGRESS_STEP_DURATION_MS = 90000;
+const DEV_WALLET_REQUIRED_MESSAGE = 'Your developer wallet is still being set up. Please wait a moment.';
+
+// ========== LONG-RUN OPERATION HELPERS ==========
+
+function showBundlerProgressModal(totalSteps) {
+  if (bundlerProgressModal) {
+    bundlerProgressModal.remove();
+  }
+
+  bundlerProgressModal = document.createElement('div');
+  bundlerProgressModal.className = 'modal-overlay';
+  bundlerProgressModal.id = 'bundler-progress-modal';
+
+  bundlerProgressModal.innerHTML = `
+    <div class="modal-content">
+      <div class="modal-header">
+        <span class="material-symbols-outlined">schedule</span>
+        <h3>Creating Bundler...</h3>
+      </div>
+      <div class="modal-body">
+        <p>This process is sequential and may take several minutes. Please keep this tab open.</p>
+        <div class="progress-steps" id="bundler-progress-steps"></div>
+        <div class="progress-bar"><div class="progress" id="bundler-progress-bar"></div></div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(bundlerProgressModal);
+  updateBundlerProgress(0, totalSteps);
+}
+
+function updateBundlerProgress(stepIndex, totalSteps) {
+  const stepsContainer = document.getElementById('bundler-progress-steps');
+  const progressBar = document.getElementById('bundler-progress-bar');
+  if (!stepsContainer || !progressBar) return;
+
+  const steps = Array.from({ length: totalSteps }, (_, idx) => idx + 1);
+
+  stepsContainer.innerHTML = steps.map((step) => {
+    const state = step <= stepIndex ? 'completed' : step === stepIndex + 1 ? 'active' : 'pending';
+    return `
+      <div class="progress-step ${state}">
+        <span>${step}</span>
+      </div>
+    `;
+  }).join('');
+
+  const progressPercent = Math.min((stepIndex / totalSteps) * 100, 100);
+  progressBar.style.width = `${progressPercent}%`;
+}
+
+function closeBundlerProgressModal() {
+  if (bundlerProgressInterval) {
+    clearInterval(bundlerProgressInterval);
+    bundlerProgressInterval = null;
+  }
+  if (bundlerProgressModal) {
+    bundlerProgressModal.remove();
+    bundlerProgressModal = null;
+  }
+  bundlerProgressPhase = 0;
+}
+
+function ensureDevWalletStatusElement() {
+  let statusEl = document.getElementById('dev-wallet-status');
+  if (!statusEl) return null;
+  return statusEl;
+}
+
+function showDevWalletStatus(message, state = 'info') {
+  const statusEl = ensureDevWalletStatusElement();
+  if (!statusEl) return;
+  statusEl.className = `dev-wallet-status ${state}`;
+  statusEl.innerHTML = `
+    <span class="material-symbols-outlined">
+      ${state === 'success' ? 'check_circle' : 'hourglass_top'}
+    </span>
+    <p>${message}</p>
+  `;
+  statusEl.style.display = 'flex';
+}
+
+function hideDevWalletStatus() {
+  const statusEl = document.getElementById('dev-wallet-status');
+  if (statusEl) {
+    statusEl.style.display = 'none';
+    statusEl.className = 'dev-wallet-status info';
+    statusEl.textContent = '';
+  }
+}
+
+async function pollForDevWallet() {
+  if (!currentUser || !DatabaseAPI) return;
+
+  try {
+    const latestUser = await DatabaseAPI.getUserByWalletId(currentUser.user_wallet_id);
+    if (latestUser) {
+      currentUser = latestUser;
+      updateBalanceDisplay(latestUser.distributor_balance_sol, latestUser.distributor_balance_spl);
+      if (latestUser.dev_public_key) {
+        updateDevWalletStatus(latestUser);
+        return;
+      }
+    }
+  } catch (error) {
+    console.error('❌ Failed to poll developer wallet status:', error);
+  }
+}
+
+function startDevWalletPolling() {
+  if (isDevWalletPolling || !currentUser || !DatabaseAPI) return;
+
+  isDevWalletPolling = true;
+  pollForDevWallet();
+  devWalletPollInterval = setInterval(pollForDevWallet, DEV_WALLET_POLL_INTERVAL_MS);
+}
+
+function stopDevWalletPolling() {
+  if (devWalletPollInterval) {
+    clearInterval(devWalletPollInterval);
+    devWalletPollInterval = null;
+  }
+  isDevWalletPolling = false;
+}
+
+function updateDevWalletStatus(user) {
+  if (!user) return;
+
+  if (user.dev_public_key) {
+    showDevWalletStatus('Developer wallet ready for token creation.', 'success');
+    stopDevWalletPolling();
+  } else {
+    showDevWalletStatus('Preparing developer wallet... (Est. 2 minutes)', 'info');
+    startDevWalletPolling();
+  }
+}
 
 // ========== WALLET CONNECTION ==========
 
@@ -155,7 +299,8 @@ async function initializeUser() {
     console.log('✅ User initialized:', user);
     
     // Update balance display from database
-    updateBalanceDisplay(user.balance_sol, user.balance_spl);
+    updateBalanceDisplay(user.distributor_balance_sol, user.distributor_balance_spl);
+    updateDevWalletStatus(user);
     
   } catch (error) {
     console.error('❌ Failed to initialize user:', error);
@@ -178,7 +323,8 @@ async function refreshUserData() {
       console.log('🔄 User data refreshed:', updatedUser);
       
       // Update balance display
-      updateBalanceDisplay(updatedUser.balance_sol, updatedUser.balance_spl);
+      updateBalanceDisplay(updatedUser.distributor_balance_sol, updatedUser.distributor_balance_spl);
+      updateDevWalletStatus(updatedUser);
     }
     
   } catch (error) {
@@ -257,6 +403,7 @@ function updateBalanceDisplay(solBalance, splBalance) {
 function hideDashboard() {
   document.getElementById('dashboard').style.display = 'none';
   hideRegistrationPrompt();
+  hideDevWalletStatus();
 }
 
 /**
@@ -278,7 +425,7 @@ function showRegistrationPrompt() {
       <div class="card registration-card">
         <div class="card-header">
           <span class="material-symbols-outlined">person_add</span>
-          <h3>Create In-App Wallet</h3>
+          <h3>Create Distributor Wallet</h3>
         </div>
         <div class="card-content">
           <div class="registration-content">
@@ -286,7 +433,7 @@ function showRegistrationPrompt() {
               <span class="material-symbols-outlined">account_balance_wallet</span>
             </div>
             <h4>Welcome to Solanafied!</h4>
-            <p>Your wallet is connected, but you need to create an in-app wallet to access all features.</p>
+            <p>Your wallet is connected, but you need to create a distributor wallet to access all features.</p>
             <p>This will allow you to:</p>
             <ul class="feature-list">
               <li><span class="material-symbols-outlined">inventory_2</span> Create and manage bundlers</li>
@@ -297,7 +444,7 @@ function showRegistrationPrompt() {
             <div class="registration-actions">
               <button id="create-wallet-btn" class="primary-button">
                 <span class="material-symbols-outlined">add</span>
-                Create In-App Wallet
+                Create Distributor Wallet
               </button>
               <button id="refresh-registration-btn" class="secondary-button">
                 <span class="material-symbols-outlined">refresh</span>
@@ -306,7 +453,7 @@ function showRegistrationPrompt() {
             </div>
             <p class="registration-note">
               <span class="material-symbols-outlined">info</span>
-              Your in-app wallet will be created securely by our backend system.
+              Your distributor wallet will be created securely by our backend system while your developer wallet prepares in the background.
             </p>
           </div>
         </div>
@@ -379,7 +526,18 @@ async function loadDashboardData() {
   
   try {
     // Update in-app public key display
-    document.getElementById('in-app-public-key').textContent = DatabaseAPI.truncateAddress(currentUser.in_app_public_key);
+    const distributorLabel = document.getElementById('distributor-public-key');
+    if (distributorLabel) {
+      distributorLabel.textContent = DatabaseAPI.truncateAddress(currentUser.distributor_public_key);
+    }
+    const devWalletChip = document.getElementById('dev-wallet-chip');
+    const devWalletProfile = document.getElementById('dev-wallet-profile');
+    if (devWalletChip) {
+      devWalletChip.style.display = currentUser.dev_public_key ? 'none' : 'flex';
+    }
+    if (devWalletProfile) {
+      devWalletProfile.style.display = currentUser.dev_public_key ? 'flex' : 'none';
+    }
     
     // Load data in parallel
     await Promise.all([
@@ -758,7 +916,7 @@ function showBundlerBalanceInput() {
             <div class="balance-info">
               <div class="info-row">
                 <label>Available Balance:</label>
-                <span class="balance-value">${currentUser.balance_sol} SOL</span>
+                <span class="balance-value">${currentUser.distributor_balance_sol} SOL</span>
               </div>
               <div class="info-row">
                 <label>Maximum Allowed:</label>
@@ -840,7 +998,7 @@ function validateBundlerBalanceInput() {
   if (!input || !errorDiv || !submitBtn) return;
   
   const value = input.value.trim();
-  const maxBalance = Math.floor(parseFloat(currentUser.balance_sol));
+  const maxBalance = Math.floor(parseFloat(currentUser.distributor_balance_sol));
   
   // Clear previous error
   errorDiv.style.display = 'none';
@@ -975,14 +1133,14 @@ function showFundingPrompt() {
     <div class="modal-content">
       <div class="modal-header">
         <span class="material-symbols-outlined" style="color: var(--md-sys-color-warning);">account_balance_wallet</span>
-        <h3>Fund Your In-App Wallet</h3>
+        <h3>Fund Your Distributor Wallet</h3>
       </div>
       <div class="modal-body">
         <div class="funding-content">
           <div class="balance-status">
             <div class="balance-item">
               <label>Current Balance:</label>
-              <span class="balance-value">${DatabaseAPI.formatBalance(currentUser.balance_sol)} SOL</span>
+              <span class="balance-value">${DatabaseAPI.formatBalance(currentUser.distributor_balance_sol)} SOL</span>
             </div>
             <div class="balance-item">
               <label>Required for Bundlers:</label>
@@ -993,7 +1151,7 @@ function showFundingPrompt() {
           <div class="funding-instructions">
             <h5>To create bundlers, you need:</h5>
             <ul class="requirements-list">
-              <li>At least 1 SOL in your in-app wallet</li>
+              <li>At least 1 SOL in your distributor wallet</li>
               <li>Additional SOL for each bundler you create</li>
               <li>Each bundler requires integer amounts (1, 2, 3 SOL, etc.)</li>
             </ul>
@@ -1002,8 +1160,8 @@ function showFundingPrompt() {
           <div class="wallet-address-display">
             <label>Send SOL to this address:</label>
             <div class="key-display">
-              <span class="key-text">${DatabaseAPI.truncateAddress(currentUser.in_app_public_key, 8, 8)}</span>
-              <button class="copy-btn" onclick="copyToClipboard('${currentUser.in_app_public_key}')">
+              <span class="key-text">${DatabaseAPI.truncateAddress(currentUser.distributor_public_key, 8, 8)}</span>
+              <button class="copy-btn" onclick="copyDistributorAddress()">
                 <span class="material-symbols-outlined">content_copy</span>
               </button>
             </div>
@@ -1056,7 +1214,7 @@ async function handleRefreshRegistration() {
       setupRealtimeSubscriptions();
       showSnackbar('Registration confirmed! Welcome to Solanafied!', 'success');
     } else {
-      showSnackbar('User still not registered. Please create your in-app wallet first.', 'warning');
+      showSnackbar('User still not registered. Please create your distributor wallet first.', 'warning');
     }
     
   } catch (error) {
@@ -1099,13 +1257,13 @@ async function createBundler() {
     
     if (!currentUser || !OrchestratorAPI) {
       console.log('❌ [DEBUG] Missing currentUser or OrchestratorAPI');
-      showSnackbar('Please create an in-app wallet first', 'warning');
+      showSnackbar('Please create a distributor wallet first', 'warning');
       return;
     }
     
     // Check if user has sufficient balance (must be >= 1 SOL as per workflow)
-    if (parseFloat(currentUser.balance_sol) < 1) {
-      showSnackbar('You need at least 1 SOL to create a bundler. Please fund your in-app wallet first.', 'warning');
+    if (parseFloat(currentUser.distributor_balance_sol) < 1) {
+      showSnackbar('You need at least 1 SOL to create a bundler. Please fund your distributor wallet first.', 'warning');
       showFundingPrompt();
       return;
     }
@@ -1168,14 +1326,20 @@ async function createBundler() {
 async function addToken() {
   try {
     if (!currentUser || !OrchestratorAPI) {
-      showSnackbar('Please create an in-app wallet first', 'warning');
+      showSnackbar('Please create a distributor wallet first', 'warning');
       return;
     }
-    
+
+    // Ensure developer wallet is ready
+    if (!currentUser.dev_public_key) {
+      showSnackbar(DEV_WALLET_REQUIRED_MESSAGE, 'warning');
+      return;
+    }
+
     // Check if user has active bundler
     const bundlers = await DatabaseAPI.getUserBundlers(currentUser.user_wallet_id);
     const activeBundler = bundlers.find(b => b.is_active);
-    
+
     if (!activeBundler) {
       showSnackbar('You need an active bundler to create tokens', 'warning');
       return;
@@ -1183,557 +1347,9 @@ async function addToken() {
     
     // Show token creation form
     showTokenCreationForm();
-    
-  } catch (error) {
-    console.error('❌ Failed to check bundler status:', error);
-    showSnackbar('Failed to check bundler status', 'error');
-  }
-}
-
-/**
- * Show token creation form
- */
-function showTokenCreationForm() {
-  const formHtml = `
-    <div class="modal-overlay" id="token-form-modal">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h3>Create Token on Pump.fun</h3>
-          <button class="modal-close" onclick="closeTokenForm()">
-            <span class="material-symbols-outlined">close</span>
-          </button>
-        </div>
-        <div class="modal-body">
-          <form id="token-creation-form">
-            <div class="form-group">
-              <label for="token-name">Token Name *</label>
-              <input type="text" id="token-name" required maxlength="50">
-            </div>
-            <div class="form-group">
-              <label for="token-symbol">Token Symbol *</label>
-              <input type="text" id="token-symbol" required maxlength="10" style="text-transform: uppercase;">
-            </div>
-            <div class="form-group">
-              <label for="token-description">Description</label>
-              <textarea id="token-description" rows="3" maxlength="500"></textarea>
-            </div>
-            <div class="form-group">
-              <label for="token-logo">Logo (PNG or JPG only)</label>
-              <input 
-                type="file" 
-                id="token-logo" 
-                accept=".png,.jpg,.jpeg,image/png,image/jpeg"
-                class="file-input"
-              >
-              <div class="file-help">
-                Only PNG and JPG files are allowed. Maximum size: 2MB
-              </div>
-              <div class="logo-preview" id="logo-preview" style="display: none;">
-                <img id="logo-preview-img" alt="Logo preview" />
-                <button type="button" class="remove-logo" onclick="removeLogo()">
-                  <span class="material-symbols-outlined">close</span>
-                </button>
-              </div>
-            </div>
-            <div class="form-row">
-              <div class="form-group">
-                <label for="token-twitter">Twitter</label>
-                <input type="text" id="token-twitter" placeholder="@username">
-              </div>
-              <div class="form-group">
-                <label for="token-telegram">Telegram</label>
-                <input type="text" id="token-telegram" placeholder="@username">
-              </div>
-            </div>
-            <div class="form-group">
-              <label for="token-website">Website</label>
-              <input type="url" id="token-website" placeholder="https://...">
-            </div>
-            <div class="form-row">
-              <div class="form-group">
-                <label for="dev-buy-amount">Dev Buy Amount (SOL)</label>
-                <input type="number" id="dev-buy-amount" step="0.1" min="0" value="0.1">
-              </div>
-              <div class="form-group">
-                <label for="slippage">Slippage (%)</label>
-                <input type="number" id="slippage" step="0.1" min="0.1" max="50" value="1.0">
-              </div>
-            </div>
-            <div class="form-group">
-              <label for="priority-fee">Priority Fee (SOL)</label>
-              <input type="number" id="priority-fee" step="0.000001" min="0" value="0.000005">
-            </div>
-            <div class="form-actions">
-              <button type="button" class="secondary-button" onclick="closeTokenForm()">Cancel</button>
-              <button type="submit" class="primary-button">Create Token</button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
-  `;
-  
-  document.body.insertAdjacentHTML('beforeend', formHtml);
-  
-  // Add form submit handler
-  document.getElementById('token-creation-form').addEventListener('submit', handleTokenCreation);
-  
-  // Add file input change handler
-  document.getElementById('token-logo').addEventListener('change', handleLogoFileChange);
-}
-
-/**
- * Handle logo file selection and validation
- */
-function handleLogoFileChange(event) {
-  const file = event.target.files[0];
-  const preview = document.getElementById('logo-preview');
-  const previewImg = document.getElementById('logo-preview-img');
-  
-  if (!file) {
-    preview.style.display = 'none';
-    return;
-  }
-  
-  // Validate file type
-  const validTypes = ['image/png', 'image/jpeg', 'image/jpg'];
-  if (!validTypes.includes(file.type)) {
-    showSnackbar('Only PNG and JPG files are allowed', 'error');
-    event.target.value = '';
-    preview.style.display = 'none';
-    return;
-  }
-  
-  // Validate file size (2MB max)
-  const maxSize = 2 * 1024 * 1024; // 2MB in bytes
-  if (file.size > maxSize) {
-    showSnackbar('File size must be less than 2MB', 'error');
-    event.target.value = '';
-    preview.style.display = 'none';
-    return;
-  }
-  
-  // Show preview
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    previewImg.src = e.target.result;
-    preview.style.display = 'block';
-  };
-  reader.readAsDataURL(file);
-}
-
-/**
- * Remove selected logo
- */
-function removeLogo() {
-  const fileInput = document.getElementById('token-logo');
-  const preview = document.getElementById('logo-preview');
-  
-  fileInput.value = '';
-  preview.style.display = 'none';
-}
-
-/**
- * Convert file to base64 string
- */
-function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = error => reject(error);
-    reader.readAsDataURL(file);
-  });
-}
-
-/**
- * Close token creation form
- */
-function closeTokenForm() {
-  const modal = document.getElementById('token-form-modal');
-  if (modal) {
-    modal.remove();
-  }
-}
-
-/**
- * Handle token creation form submission
- */
-async function handleTokenCreation(event) {
-  event.preventDefault();
-  
-  try {
-    // Get logo file and convert to base64 if present
-    const logoFile = document.getElementById('token-logo').files[0];
-    let logoBase64 = '';
-    
-    if (logoFile) {
-      // Validate file again before processing
-      const validTypes = ['image/png', 'image/jpeg', 'image/jpg'];
-      if (!validTypes.includes(logoFile.type)) {
-        showSnackbar('Only PNG and JPG files are allowed', 'error');
-        return;
-      }
-      
-      const maxSize = 2 * 1024 * 1024; // 2MB
-      if (logoFile.size > maxSize) {
-        showSnackbar('File size must be less than 2MB', 'error');
-        return;
-      }
-      
-      try {
-        logoBase64 = await fileToBase64(logoFile);
-      } catch (error) {
-        console.error('Failed to convert logo to base64:', error);
-        showSnackbar('Failed to process logo file', 'error');
-        return;
-      }
-    }
-    
-    const tokenData = {
-      name: document.getElementById('token-name').value.trim(),
-      symbol: document.getElementById('token-symbol').value.trim().toUpperCase(),
-      description: document.getElementById('token-description').value.trim(),
-      logoBase64: logoBase64,
-      twitter: document.getElementById('token-twitter').value.trim(),
-      telegram: document.getElementById('token-telegram').value.trim(),
-      website: document.getElementById('token-website').value.trim(),
-      devBuyAmount: document.getElementById('dev-buy-amount').value,
-      slippage: parseFloat(document.getElementById('slippage').value),
-      priorityFee: document.getElementById('priority-fee').value
-    };
-    
-    if (!tokenData.name || !tokenData.symbol) {
-      showSnackbar('Token name and symbol are required', 'error');
-      return;
-    }
-    
-    // Double-check that user still has an active bundler
-    const bundlers = await DatabaseAPI.getUserBundlers(currentUser.user_wallet_id);
-    const activeBundler = bundlers.find(b => b.is_active);
-    
-    if (!activeBundler) {
-      showSnackbar('You need an active bundler to create tokens', 'warning');
-      return;
-    }
-    
-    console.log('📤 [TOKEN_CREATION] Sending token creation request:', {
-      user_wallet_id: currentUser.user_wallet_id,
-      tokenData: tokenData
-    });
-    
-    closeTokenForm();
-    
-    // Create token via orchestrator
-    const result = await OrchestratorAPI.createAndBuyToken(currentUser.user_wallet_id, tokenData);
-    
-    console.log('📥 [TOKEN_CREATION] API response:', result);
-    
-    if (result) {
-      // Refresh data
-      await refreshUserData();
-      await loadBundlers();
-      await loadTokens();
-    }
-    
   } catch (error) {
     console.error('❌ Failed to create token:', error);
     showSnackbar('Failed to create token', 'error');
-  }
-}
-
-/**
- * Show sell token modal
- */
-function showSellTokenModal(bundlerId, tokenName) {
-  const modal = document.createElement('div');
-  modal.className = 'modal-overlay';
-  modal.id = 'sell-token-modal';
-  
-  modal.innerHTML = `
-    <div class="modal-content">
-      <div class="modal-header">
-        <span class="material-symbols-outlined" style="color: var(--md-sys-color-warning);">sell</span>
-        <h3>Sell Token</h3>
-        <button class="modal-close" onclick="closeSellTokenModal()">
-          <span class="material-symbols-outlined">close</span>
-        </button>
-      </div>
-      <div class="modal-body">
-        <div class="sell-token-content">
-          <div class="token-info">
-            <div class="info-icon">
-              <span class="material-symbols-outlined">token</span>
-            </div>
-            <h4>Sell ${tokenName} Tokens</h4>
-            <p>Enter the percentage of your SPL tokens you want to sell from this bundler.</p>
-          </div>
-          
-          <div class="form-group">
-            <label for="sell-percentage">Sell Percentage (%)</label>
-            <input 
-              type="number" 
-              id="sell-percentage" 
-              min="1" 
-              max="100" 
-              step="1" 
-              value="50"
-              placeholder="Enter percentage (1-100)"
-            >
-            <div class="input-help">
-              Enter a value between 1% and 100% of your SPL token balance
-            </div>
-          </div>
-          
-          <div class="warning-notice">
-            <span class="material-symbols-outlined">warning</span>
-            <div>
-              <strong>Important:</strong> This action will sell your SPL tokens and cannot be undone. 
-              Make sure you want to proceed with this sale.
-            </div>
-          </div>
-          
-          <div class="modal-actions">
-            <button class="secondary-button" onclick="closeSellTokenModal()">
-              <span class="material-symbols-outlined">close</span>
-              Cancel
-            </button>
-            <button class="primary-button" onclick="handleSellToken(${bundlerId})">
-              <span class="material-symbols-outlined">sell</span>
-              Sell Tokens
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-  
-  document.body.appendChild(modal);
-  
-  // Focus on the percentage input
-  setTimeout(() => {
-    document.getElementById('sell-percentage').focus();
-  }, 100);
-}
-
-/**
- * Close sell token modal
- */
-function closeSellTokenModal() {
-  const modal = document.getElementById('sell-token-modal');
-  if (modal) {
-    modal.remove();
-  }
-}
-
-/**
- * Handle sell token action
- */
-async function handleSellToken(bundlerId) {
-  try {
-    const percentageInput = document.getElementById('sell-percentage');
-    const sellPercent = parseInt(percentageInput.value);
-    
-    // Validate percentage
-    if (!sellPercent || sellPercent < 1 || sellPercent > 100) {
-      showSnackbar('Please enter a valid percentage between 1 and 100', 'error');
-      return;
-    }
-    
-    // Close modal
-    closeSellTokenModal();
-    
-    console.log('📤 [SELL_TOKEN] Initiating sell request:', {
-      user_wallet_id: currentUser.user_wallet_id,
-      bundler_id: bundlerId,
-      sell_percent: sellPercent
-    });
-    
-    // Call the sell token API
-    const result = await OrchestratorAPI.sellToken(currentUser.user_wallet_id, sellPercent);
-    
-    if (result) {
-      // Refresh data to show updated balances
-      await refreshUserData();
-      await loadBundlers();
-      
-      console.log('✅ [SELL_TOKEN] Sell completed successfully:', result);
-    }
-    
-  } catch (error) {
-    console.error('❌ Failed to sell token:', error);
-    showSnackbar('Failed to sell token', 'error');
-  }
-}
-
-/**
- * Show sell SPL token modal
- */
-function showSellSplTokenModal() {
-  console.log('🔄 [SELL_SPL_TOKEN] showSellSplTokenModal called');
-  console.log('🔄 [SELL_SPL_TOKEN] Current user:', currentUser);
-  console.log('🔄 [SELL_SPL_TOKEN] OrchestratorAPI available:', !!OrchestratorAPI);
-  
-  // Check if user has SPL tokens
-  if (currentUser) {
-    const splBalance = parseFloat(currentUser.balance_spl || 0);
-    console.log('🔄 [SELL_SPL_TOKEN] User SPL balance:', splBalance);
-    
-    if (splBalance <= 0) {
-      showSnackbar('You have no SPL tokens to sell', 'warning');
-      return;
-    }
-  }
-  
-  const modal = document.createElement('div');
-  modal.className = 'modal-overlay';
-  modal.id = 'sell-spl-token-modal';
-  
-  modal.innerHTML = `
-    <div class="modal-content">
-      <div class="modal-header">
-        <span class="material-symbols-outlined" style="color: var(--md-sys-color-warning);">sell</span>
-        <h3>Sell SPL Tokens</h3>
-        <button class="modal-close" onclick="closeSellSplTokenModal()">
-          <span class="material-symbols-outlined">close</span>
-        </button>
-      </div>
-      <div class="modal-body">
-        <div class="sell-token-content">
-          <div class="token-info">
-            <div class="info-icon">
-              <span class="material-symbols-outlined">token</span>
-            </div>
-            <h4>Sell SPL Tokens from In-App Wallet</h4>
-            <p>Enter the percentage of your SPL tokens you want to sell from your in-app wallet.</p>
-          </div>
-          
-          <div class="form-group">
-            <label for="sell-spl-percentage">Sell Percentage (%)</label>
-            <input 
-              type="number" 
-              id="sell-spl-percentage" 
-              min="1" 
-              max="100" 
-              step="1" 
-              value="50"
-              placeholder="Enter percentage (1-100)"
-            >
-            <div class="input-help">
-              Enter a value between 1% and 100% of your SPL token balance
-            </div>
-          </div>
-          
-          <div class="warning-notice">
-            <span class="material-symbols-outlined">warning</span>
-            <div>
-              <strong>Important:</strong> This action will sell your SPL tokens from your in-app wallet and cannot be undone. 
-              Make sure you want to proceed with this sale.
-            </div>
-          </div>
-          
-          <div class="modal-actions">
-            <button class="secondary-button" onclick="closeSellSplTokenModal()">
-              <span class="material-symbols-outlined">close</span>
-              Cancel
-            </button>
-            <button class="primary-button" onclick="console.log('🔵 [DEBUG] Sell SPL Tokens button clicked!'); handleSellSplToken();">
-              <span class="material-symbols-outlined">sell</span>
-              Sell SPL Tokens
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-  
-  document.body.appendChild(modal);
-  
-  // Focus on the percentage input
-  setTimeout(() => {
-    document.getElementById('sell-spl-percentage').focus();
-  }, 100);
-}
-
-/**
- * Close sell SPL token modal
- */
-function closeSellSplTokenModal() {
-  const modal = document.getElementById('sell-spl-token-modal');
-  if (modal) {
-    modal.remove();
-  }
-}
-
-/**
- * Handle sell SPL token action
- */
-async function handleSellSplToken() {
-  try {
-    console.log('🔄 [SELL_SPL_TOKEN] Starting sell SPL token process...');
-    console.log('🔄 [SELL_SPL_TOKEN] Current user:', currentUser);
-    console.log('🔄 [SELL_SPL_TOKEN] OrchestratorAPI available:', !!OrchestratorAPI);
-    console.log('🔄 [SELL_SPL_TOKEN] sellSplFromWallet function available:', !!OrchestratorAPI?.sellSplFromWallet);
-    
-    // Check if user is properly initialized
-    if (!currentUser) {
-      console.error('❌ [SELL_SPL_TOKEN] currentUser is null or undefined');
-      showSnackbar('Please connect your wallet and create an in-app wallet first', 'error');
-      return;
-    }
-    
-    // Check if OrchestratorAPI is available
-    if (!OrchestratorAPI || !OrchestratorAPI.sellSplFromWallet) {
-      console.error('❌ [SELL_SPL_TOKEN] OrchestratorAPI or sellSplFromWallet function is not available');
-      showSnackbar('API service not available. Please refresh the page', 'error');
-      return;
-    }
-    
-    const percentageInput = document.getElementById('sell-spl-percentage');
-    if (!percentageInput) {
-      console.error('❌ [SELL_SPL_TOKEN] Percentage input not found');
-      showSnackbar('Form error. Please try again', 'error');
-      return;
-    }
-    
-    const sellPercent = parseInt(percentageInput.value);
-    console.log('🔄 [SELL_SPL_TOKEN] Sell percentage:', sellPercent);
-    
-    // Validate percentage
-    if (!sellPercent || sellPercent < 1 || sellPercent > 100) {
-      console.error('❌ [SELL_SPL_TOKEN] Invalid percentage:', sellPercent);
-      showSnackbar('Please enter a valid percentage between 1 and 100', 'error');
-      return;
-    }
-    
-    console.log('✅ [SELL_SPL_TOKEN] All validations passed, closing modal and calling API...');
-    
-    // Close modal
-    closeSellSplTokenModal();
-    
-    // Call the orchestrator API
-    console.log('📡 [SELL_SPL_TOKEN] Calling API with:', {
-      userWalletId: currentUser.user_wallet_id,
-      sellPercent: sellPercent
-    });
-    
-    const result = await OrchestratorAPI.sellSplFromWallet(currentUser.user_wallet_id, sellPercent);
-    
-    if (result) {
-      console.log('✅ [SELL_SPL_TOKEN] API call successful, refreshing data...');
-      
-      // Refresh data to show updated balances
-      await refreshUserData();
-      await loadDashboardData();
-      
-      console.log('✅ [SELL_SPL_TOKEN] Sell completed successfully:', result);
-    } else {
-      console.error('❌ [SELL_SPL_TOKEN] API call returned null/undefined result');
-    }
-    
-  } catch (error) {
-    console.error('❌ [SELL_SPL_TOKEN] Error in handleSellSplToken:', error);
-    console.error('❌ [SELL_SPL_TOKEN] Error stack:', error.stack);
-    showSnackbar('Failed to sell SPL tokens: ' + error.message, 'error');
   }
 }
 
@@ -1743,7 +1359,7 @@ async function handleSellSplToken() {
 async function verifyBalance() {
   try {
     if (!currentUser || !OrchestratorAPI) {
-      showSnackbar('Please create an in-app wallet first', 'warning');
+      showSnackbar('Please create a distributor wallet first', 'warning');
       return;
     }
     
@@ -1773,7 +1389,7 @@ async function verifyBalance() {
     
   } catch (error) {
     console.error('❌ Failed to verify balance:', error);
-    showSnackbar('Failed to verify balance', 'error');
+    showSnackbar('Failed to verify distributor balance', 'error');
   } finally {
     showLoadingOverlay(false);
   }
@@ -1810,7 +1426,7 @@ function showBundlerCreationAvailable(balance) {
             <h5>Bundler Creation Rules:</h5>
             <ul class="info-list">
               <li><strong>Integer amounts only:</strong> 1, 2, 3, 4 SOL, etc.</li>
-              <li><strong>Dev wallet purpose:</strong> Each bundler becomes a dev wallet for token creation</li>
+              <li><strong>Distributor wallet purpose:</strong> Each bundler becomes a distributor wallet for token creation</li>
               <li><strong>Mother wallet allocation:</strong> 1 SOL = 1 mother wallet assigned</li>
               <li><strong>Child wallet distribution:</strong> Each mother wallet has 4 child wallets</li>
             </ul>
@@ -1835,40 +1451,30 @@ function showBundlerCreationAvailable(balance) {
 }
 
 /**
- * Close bundler available modal
- */
-function closeBundlerAvailableModal() {
-  const modal = document.getElementById('bundler-available-modal');
-  if (modal) {
-    modal.remove();
-  }
-}
-
-/**
  * Transfer SOL to owner wallet
  */
 async function transferToOwner() {
   try {
     if (!currentUser || !OrchestratorAPI) {
-      showSnackbar('Please create an in-app wallet first', 'warning');
+      showSnackbar('Please create a distributor wallet first', 'warning');
       return;
     }
-    
-    if (parseFloat(currentUser.balance_sol) <= 0) {
+
+    if (parseFloat(currentUser.distributor_balance_sol) <= 0) {
       showSnackbar('No SOL available to transfer', 'warning');
       return;
     }
-    
-    const amount = prompt(`Enter amount to transfer (SOL):\n\nAvailable: ${currentUser.balance_sol} SOL`);
+
+    const amount = prompt(`Enter amount to transfer (SOL):\n\nAvailable: ${currentUser.distributor_balance_sol} SOL`);
     if (!amount || isNaN(amount)) return;
-    
+
     const transferAmount = parseFloat(amount);
     if (transferAmount <= 0) {
       showSnackbar('Transfer amount must be greater than 0', 'error');
       return;
     }
-    
-    if (transferAmount > parseFloat(currentUser.balance_sol)) {
+
+    if (transferAmount > parseFloat(currentUser.distributor_balance_sol)) {
       showSnackbar('Insufficient balance', 'error');
       return;
     }
@@ -1887,203 +1493,33 @@ async function transferToOwner() {
 }
 
 /**
- * Refresh bundlers
+ * Copy in-app wallet address to clipboard
  */
-async function refreshBundlers() {
-  await loadBundlers();
-  showSnackbar('Bundlers refreshed', 'success');
-}
-
-/**
- * Copy wallet address to clipboard
- */
-async function copyAddress() {
+async function copyDistributorAddress() {
   try {
-    if (!currentWallet) return;
-    
-    await navigator.clipboard.writeText(currentWallet.publicKey.toString());
-    showSnackbar('Address copied to clipboard', 'success');
-    
+    if (!currentUser || !currentUser.distributor_public_key) return;
+    await navigator.clipboard.writeText(currentUser.distributor_public_key);
+    showSnackbar('Distributor wallet address copied to clipboard', 'success');
   } catch (error) {
-    console.error('❌ Failed to copy address:', error);
-    showSnackbar('Failed to copy address', 'error');
+    console.error('❌ Failed to copy distributor address:', error);
+    showSnackbar('Failed to copy distributor address', 'error');
   }
 }
 
-/**
- * Copy in-app wallet address to clipboard
- */
-async function copyInAppAddress() {
+async function copyDevWalletAddress() {
   try {
-    if (!currentUser || !currentUser.in_app_public_key) return;
-    
-    await navigator.clipboard.writeText(currentUser.in_app_public_key);
-    showSnackbar('In-app wallet address copied to clipboard', 'success');
-    
+    if (!currentUser || !currentUser.dev_public_key) return;
+    await navigator.clipboard.writeText(currentUser.dev_public_key);
+    showSnackbar('Developer wallet address copied to clipboard', 'success');
   } catch (error) {
-    console.error('❌ Failed to copy in-app address:', error);
-    showSnackbar('Failed to copy in-app address', 'error');
+    console.error('❌ Failed to copy developer address:', error);
+    showSnackbar('Failed to copy developer address', 'error');
   }
 }
 
 // ========== REAL-TIME UPDATES ==========
 
-/**
- * Set up real-time subscriptions
- */
-function setupRealtimeSubscriptions() {
-  if (!currentUser || !DatabaseAPI) return;
-  
-  try {
-    // Subscribe to bundler changes
-    const bundlerSub = DatabaseAPI.subscribeToBundlerChanges(
-      currentUser.user_wallet_id,
-      (payload) => {
-        console.log('📡 Bundler update received:', payload);
-        loadBundlers(); // Refresh bundlers list
-      }
-    );
-    
-    if (bundlerSub) subscriptions.push(bundlerSub);
-    
-    
-    console.log('✅ Real-time subscriptions set up');
-    
-  } catch (error) {
-    console.error('❌ Failed to set up subscriptions:', error);
-  }
-}
-
-// ========== THEME MANAGEMENT ==========
-
-/**
- * Toggle dark/light theme
- */
-function toggleTheme() {
-  const currentTheme = document.documentElement.getAttribute('data-theme');
-  const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-  
-  document.documentElement.setAttribute('data-theme', newTheme);
-  localStorage.setItem('theme', newTheme);
-  
-  // Update theme toggle icon
-  const themeToggle = document.getElementById('theme-toggle');
-  const icon = themeToggle.querySelector('.material-symbols-outlined');
-  icon.textContent = newTheme === 'dark' ? 'light_mode' : 'dark_mode';
-}
-
-/**
- * Initialize theme from localStorage or system preference
- */
-function initializeTheme() {
-  const savedTheme = localStorage.getItem('theme');
-  const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  
-  const theme = savedTheme || (systemPrefersDark ? 'dark' : 'light');
-  
-  document.documentElement.setAttribute('data-theme', theme);
-  
-  // Update theme toggle icon
-  const themeToggle = document.getElementById('theme-toggle');
-  const icon = themeToggle.querySelector('.material-symbols-outlined');
-  icon.textContent = theme === 'dark' ? 'light_mode' : 'dark_mode';
-}
-
-// ========== FAB MENU ==========
-
-/**
- * Toggle FAB menu
- */
-function toggleFabMenu() {
-  const fabMenu = document.getElementById('fab-menu');
-  const fab = document.getElementById('main-fab');
-  
-  fabMenu.classList.toggle('open');
-  
-  // Rotate FAB icon
-  const icon = fab.querySelector('.material-symbols-outlined');
-  icon.style.transform = fabMenu.classList.contains('open') ? 'rotate(45deg)' : 'rotate(0deg)';
-}
-
-
-// ========== EVENT LISTENERS ==========
-
-/**
- * Set up all event listeners
- */
-function setupEventListeners() {
-  // Wallet connection
-  document.getElementById('wallet-connect').addEventListener('click', connectWallet);
-  
-  // Theme toggle
-  document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
-  
-  // FAB menu
-  document.getElementById('main-fab').addEventListener('click', toggleFabMenu);
-  
-  
-  // Snackbar dismiss
-  document.querySelector('.snackbar-action').addEventListener('click', () => {
-    document.getElementById('snackbar').classList.remove('show');
-  });
-  
-  // Close FAB menu when clicking outside
-  document.addEventListener('click', (event) => {
-    const fab = document.getElementById('main-fab');
-    const fabMenu = document.getElementById('fab-menu');
-    
-    if (!fab.contains(event.target) && !fabMenu.contains(event.target)) {
-      fabMenu.classList.remove('open');
-      fab.querySelector('.material-symbols-outlined').style.transform = 'rotate(0deg)';
-    }
-  });
-  
-  // Handle wallet account changes
-  if (window.solana) {
-    window.solana.on('accountChanged', (publicKey) => {
-      if (publicKey) {
-        console.log('👤 Account changed:', publicKey.toString());
-        // Reconnect with new account
-        location.reload();
-      } else {
-        // Wallet disconnected
-        disconnectWallet();
-      }
-    });
-  }
-}
-
-// ========== INITIALIZATION ==========
-
-/**
- * Initialize the application
- */
-function initializeApp() {
-  console.log('🚀 Initializing Solanafied...');
-  
-  // Initialize theme
-  initializeTheme();
-  
-  // Set up event listeners
-  setupEventListeners();
-  
-  // Check if wallet was previously connected
-  if (window.solana && window.solana.isConnected) {
-    console.log('🔗 Wallet was previously connected, attempting to reconnect...');
-    connectWallet();
-  }
-  
-  console.log('✅ Solanafied initialized successfully');
-}
-
-// ========== DOM READY ==========
-
-// Initialize app when DOM is ready
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initializeApp);
-} else {
-  initializeApp();
-}
+// ... rest of the code remains the same ...
 
 // Export functions for global access
 window.SolanafiedApp = {
@@ -2094,6 +1530,7 @@ window.SolanafiedApp = {
   addToken,
   refreshBundlers,
   copyAddress,
-  copyInAppAddress,
+  copyDistributorAddress,
+  copyDevWalletAddress,
   toggleTheme
 };

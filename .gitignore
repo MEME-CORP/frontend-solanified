@@ -12,3 +12,6 @@
 # VS Code/OS files
 .DS_Store
 .vscode/
+
+# Windsurf
+.windsurf/

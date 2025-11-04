@@ -86,37 +86,6 @@ function truncateAddress(address, startChars = 4, endChars = 4) {
 // ========== USER OPERATIONS ==========
 
 /**
- * Create or update a user record
- */
-async function upsertUser(walletId, privateKey, publicKey) {
-  try {
-    if (!supabaseClient) {
-      throw new Error('Database not initialized');
-    }
-
-    const { data, error } = await supabaseClient
-      .from('users')
-      .upsert({
-        user_wallet_id: walletId,
-        in_app_private_key: privateKey,
-        in_app_public_key: publicKey,
-        balance_sol: 0,
-        balance_spl: 0
-      }, {
-        onConflict: 'user_wallet_id'
-      })
-      .select();
-
-    if (error) throw error;
-    
-    console.log('✅ User upserted successfully:', data);
-    return data[0];
-  } catch (error) {
-    return handleDatabaseError(error, 'user upsert');
-  }
-}
-
-/**
  * Get user by wallet ID
  */
 async function getUserByWalletId(walletId) {
@@ -140,9 +109,9 @@ async function getUserByWalletId(walletId) {
 }
 
 /**
- * Update user balances
+ * Update distributor wallet balances
  */
-async function updateUserBalances(walletId, solBalance, splBalance) {
+async function updateUserDistributorBalances(walletId, solBalance, splBalance) {
   try {
     if (!supabaseClient) {
       throw new Error('Database not initialized');
@@ -151,18 +120,51 @@ async function updateUserBalances(walletId, solBalance, splBalance) {
     const { data, error } = await supabaseClient
       .from('users')
       .update({
-        balance_sol: solBalance,
-        balance_spl: splBalance
+        distributor_balance_sol: solBalance,
+        distributor_balance_spl: splBalance
       })
       .eq('user_wallet_id', walletId)
       .select();
 
     if (error) throw error;
-    
+
     return data[0];
   } catch (error) {
-    return handleDatabaseError(error, 'update user balances');
+    return handleDatabaseError(error, 'update distributor balances');
   }
+}
+
+/**
+ * Update developer wallet balances
+ */
+async function updateUserDevBalances(walletId, solBalance, splBalance) {
+  try {
+    if (!supabaseClient) {
+      throw new Error('Database not initialized');
+    }
+
+    const { data, error } = await supabaseClient
+      .from('users')
+      .update({
+        dev_balance_sol: solBalance,
+        dev_balance_spl: splBalance
+      })
+      .eq('user_wallet_id', walletId)
+      .select();
+
+    if (error) throw error;
+
+    return data[0];
+  } catch (error) {
+    return handleDatabaseError(error, 'update developer balances');
+  }
+}
+
+/**
+ * Backward-compatible wrapper for distributor balance updates
+ */
+async function updateUserBalances(walletId, solBalance, splBalance) {
+  return updateUserDistributorBalances(walletId, solBalance, splBalance);
 }
 
 // ========== BUNDLER OPERATIONS ==========
@@ -611,8 +613,9 @@ window.DatabaseAPI = {
   initialize: initializeDatabase,
   
   // User operations
-  upsertUser,
   getUserByWalletId,
+  updateUserDistributorBalances,
+  updateUserDevBalances,
   updateUserBalances,
   
   // Bundler operations

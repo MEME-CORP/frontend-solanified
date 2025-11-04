@@ -58,20 +58,21 @@
                 </div>
                 <div class="card-content">
                     <div class="wallet-address">
-                        <label>Address:</label>
+                        <label>Wallet Address:</label>
                         <span id="wallet-address" class="address-text"></span>
                         <button class="copy-btn" onclick="copyAddress()">
                             <span class="material-symbols-outlined">content_copy</span>
                         </button>
                     </div>
+                    <div id="dev-wallet-status" class="dev-wallet-status info" role="status" aria-live="polite" style="display: none;"></div>
                     <div class="wallet-actions">
                         <button class="secondary-button" onclick="verifyBalance()">
                             <span class="material-symbols-outlined">refresh</span>
-                            Verify Balance
+                            Verify Distributor Balance
                         </button>
                         <button class="secondary-button" onclick="transferToOwner()">
                             <span class="material-symbols-outlined">send</span>
-                            Transfer SOL
+                            Transfer SOL Out
                         </button>
                         <button class="secondary-button" onclick="showSellSplTokenModal()" id="sell-spl-btn" style="display: none;">
                             <span class="material-symbols-outlined">sell</span>
@@ -80,12 +81,19 @@
                     </div>
                     <div class="balance-grid">
                         <div class="balance-item">
-                            <span class="balance-label">SOL Balance</span>
+                            <span class="balance-label">Distributor SOL Balance</span>
                             <span id="sol-balance" class="balance-value">0.000</span>
                         </div>
                         <div class="balance-item">
-                            <span class="balance-label">SPL Tokens</span>
+                            <span class="balance-label">Distributor SPL Tokens</span>
                             <span id="spl-balance" class="balance-value">0.000</span>
+                        </div>
+                    </div>
+                    <div class="balance-item dev-balance" id="dev-wallet-chip" style="display: none;">
+                        <span class="material-symbols-outlined" aria-hidden="true">token</span>
+                        <div>
+                            <label>Developer Wallet</label>
+                            <p id="dev-wallet-chip-text">Preparing developer wallet... (Est. 2 minutes)</p>
                         </div>
                     </div>
                 </div>
@@ -103,22 +111,32 @@
                 <div class="card-content">
                     <div class="profile-info">
                         <div class="info-item">
-                            <label>In-App Wallet:</label>
+                            <label>Distributor Wallet:</label>
                             <div class="wallet-address-display">
-                                <span id="in-app-public-key">Loading...</span>
-                                <button class="copy-btn" onclick="copyInAppAddress()">
+                                <span id="distributor-public-key">Loading...</span>
+                                <button class="copy-btn" onclick="copyDistributorAddress()">
                                     <span class="material-symbols-outlined">content_copy</span>
                                 </button>
                             </div>
                         </div>
                         <div class="balance-summary">
                             <div class="balance-row">
-                                <span>SOL:</span>
+                                <span>Distributor SOL:</span>
                                 <span id="profile-sol">0.000</span>
                             </div>
                             <div class="balance-row">
-                                <span>SPL:</span>
+                                <span>Distributor SPL:</span>
                                 <span id="profile-spl">0.000</span>
+                            </div>
+                            <div class="dev-wallet-info" id="dev-wallet-profile" style="display: none;">
+                                <span class="material-symbols-outlined">rocket_launch</span>
+                                <div>
+                                    <p class="dev-wallet-label">Developer Wallet Ready</p>
+                                    <button class="link-button" id="dev-wallet-address" onclick="copyDevWalletAddress()">
+                                        <span class="material-symbols-outlined" aria-hidden="true">content_copy</span>
+                                        <span class="link-button-text">Copy developer public key</span>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
