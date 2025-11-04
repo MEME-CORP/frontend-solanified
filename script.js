@@ -115,6 +115,34 @@ function hideDevWalletStatus() {
   }
 }
 
+function applyTheme(theme, persist = true) {
+  currentTheme = theme;
+  document.documentElement.setAttribute('data-theme', theme);
+  updateThemeToggleIcon();
+  if (persist) {
+    localStorage.setItem(THEME_STORAGE_KEY, theme);
+  }
+}
+
+function toggleTheme() {
+  const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
+  applyTheme(nextTheme);
+}
+
+function updateThemeToggleIcon() {
+  const themeToggleBtn = document.getElementById('theme-toggle');
+  if (!themeToggleBtn) return;
+  const icon = themeToggleBtn.querySelector('.material-symbols-outlined');
+  if (!icon) return;
+  if (currentTheme === 'dark') {
+    icon.textContent = 'light_mode';
+    themeToggleBtn.setAttribute('aria-label', 'Switch to light theme');
+  } else {
+    icon.textContent = 'dark_mode';
+    themeToggleBtn.setAttribute('aria-label', 'Switch to dark theme');
+  }
+}
+
 async function pollForDevWallet() {
   if (!currentUser || !DatabaseAPI) return;
 
