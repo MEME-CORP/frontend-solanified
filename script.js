@@ -622,6 +622,18 @@ async function loadBundlers() {
   }
 }
 
+/**
+ * Refresh bundlers data
+ */
+async function refreshBundlers() {
+  if (!currentUser || !DatabaseAPI) return;
+  try {
+    await loadBundlers();
+  } catch (error) {
+    console.error('❌ Failed to refresh bundlers:', error);
+    showSnackbar('Failed to refresh bundlers', 'error');
+  }
+}
 
 /**
  * Load tokens data
