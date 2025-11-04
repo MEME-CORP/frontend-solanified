@@ -1609,3 +1609,15 @@ window.SolanafiedApp = {
   copyDevWalletAddress,
   toggleTheme
 };
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    initializeTheme();
+    updateWalletUI();
+    setupRealtimeSubscriptions();
+  });
+} else {
+  initializeTheme();
+  updateWalletUI();
+  setupRealtimeSubscriptions();
+}
