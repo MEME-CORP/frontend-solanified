@@ -1594,6 +1594,49 @@ async function copyDevWalletAddress() {
 
 // ========== REAL-TIME UPDATES ==========
 
+// ========== REALTIME SUBSCRIPTIONS ==========
+
+function setupRealtimeSubscriptions() {
+  if (!DatabaseAPI || typeof DatabaseAPI.getUserByWalletId !== 'function') return;
+  if (!currentUser || !supabaseClient) return;
+
+  teardownRealtimeSubscriptions();
+
+  try {
+    // Subscribe to bundler updates
+    const bundlerSub = supabaseClient
+      .channel('bundlers-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bundlers', filter: `user_wallet_id=eq.${currentUser.user_wallet_id}` }, async () => {
+        await loadBundlers();
+      })
+      .subscribe();
+
+    // Subscribe to user balance updates
+    const userSub = supabaseClient
+      .channel('users-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'users', filter: `user_wallet_id=eq.${currentUser.user_wallet_id}` }, async () => {
+        await refreshUserData();
+      })
+      .subscribe();
+
+    subscriptions.push(bundlerSub, userSub);
+  } catch (error) {
+    console.error('❌ Failed to set up realtime subscriptions:', error);
+  }
+}
+
+function teardownRealtimeSubscriptions() {
+  if (!subscriptions.length) return;
+  subscriptions.forEach((sub) => {
+    if (sub && typeof sub.unsubscribe === 'function') {
+      sub.unsubscribe();
+    } else if (sub && typeof supabaseClient?.removeChannel === 'function') {
+      supabaseClient.removeChannel(sub);
+    }
+  });
+  subscriptions = [];
+}
+
 // ... rest of the code remains the same ...
 
 // Export functions for global access
