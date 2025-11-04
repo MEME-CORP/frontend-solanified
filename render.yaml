@@ -1,0 +1,41 @@
+services:
+  # Static Site Service
+  - type: web
+    name: solanafied-frontend
+    env: static
+    buildCommand: "npm install"
+    staticPublishPath: .
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: Content-Security-Policy
+        value: "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://orquestador-solanified-6a92.onrender.com https://*.supabase.co; img-src 'self' data: https:; frame-src 'none';"
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+
+  # Optional: Add a separate service for the backend if needed
+  # - type: web
+  #   name: solanafied-backend
+  #   env: node
+  #   buildCommand: "npm install && npm run build"
+  #   startCommand: "npm start"
+  #   envVars:
+  #     - key: NODE_ENV
+  #       value: production
+  #     - key: PORT
+  #       value: 10001

@@ -1,0 +1,46 @@
+{
+  "name": "solanafied",
+  "version": "1.0.0",
+  "description": "Unified Solana Ecosystem DApp with Material 3 Design",
+  "main": "index.html",
+  "scripts": {
+    "start": "http-server . -p $PORT -c-1 --cors",
+    "dev": "http-server . -p 3000 -c-1 --cors",
+    "build": "echo 'Static build complete'",
+    "serve": "http-server . -p 8080 -c-1 --cors"
+  },
+  "keywords": [
+    "solana",
+    "dapp",
+    "blockchain",
+    "wallet",
+    "material-design",
+    "ant-colony"
+  ],
+  "author": "Solanafied Team",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/solanafied.git"
+  },
+  "homepage": "https://solanafied.onrender.com",
+  "staticFiles": {
+    "staticPath": [
+      ".",
+      "styles.css",
+      "script.js",
+      "database.js",
+      "orchestrator.js",
+      "notifications.js"
+    ]
+  }
+}
