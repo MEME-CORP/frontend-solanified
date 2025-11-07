@@ -362,6 +362,7 @@ async function initializeUser() {
 
     mergeUserData(user);
     hideRegistrationPrompt();
+    showDashboard();
     console.log('✅ User initialized:', user);
     
     // Update balance display from database
@@ -387,6 +388,7 @@ async function refreshUserData() {
     if (updatedUser) {
       mergeUserData(updatedUser);
       hideRegistrationPrompt();
+      showDashboard();
       console.log('🔄 User data refreshed:', updatedUser);
       
       // Update balance display
@@ -512,6 +514,13 @@ function hideDashboard() {
   document.getElementById('dashboard').style.display = 'none';
   hideRegistrationPrompt();
   hideDevWalletStatus();
+}
+
+function showDashboard() {
+  const dashboard = document.getElementById('dashboard');
+  if (dashboard) {
+    dashboard.style.display = 'grid';
+  }
 }
 
 /**
