@@ -801,6 +801,20 @@ async function loadTokens() {
  */
 async function handleCreateInAppWallet() {
   try {
+    if (!currentWallet || !OrchestratorAPI) {
+      throw new Error('Wallet not connected or orchestrator not available');
+    }
+
+    const walletId = currentWallet.publicKey.toString();
+
+    if (currentUser?.distributor_public_key) {
+      showSnackbar('Distributor wallet already exists for this user.', 'info');
+      await refreshUserData();
+      await loadDashboardData();
+      updateDevWalletStatus(currentUser);
+      return;
+    }
+
     // Create in-app wallet via orchestrator
     const result = await OrchestratorAPI.createInAppWallet(walletId);
     
