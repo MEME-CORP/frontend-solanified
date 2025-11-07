@@ -26,6 +26,28 @@ const BUNDLER_PROGRESS_STEP_DURATION_MS = 90000;
 const DEV_WALLET_REQUIRED_MESSAGE = 'Your developer wallet is still being set up. Please wait a moment.';
 const THEME_STORAGE_KEY = 'solanafied-theme';
 
+function mergeUserData(partialUser = {}) {
+  const existing = currentUser || {};
+  const merged = { ...existing };
+
+  Object.keys(partialUser).forEach((key) => {
+    if (partialUser[key] !== undefined) {
+      merged[key] = partialUser[key];
+    }
+  });
+
+  if (!merged.dev_wallet_status) {
+    merged.dev_wallet_status = merged.dev_public_key ? 'ready' : existing.dev_wallet_status || 'pending';
+  }
+
+  if (partialUser.dev_wallet_ready_in_seconds === undefined && existing.dev_wallet_ready_in_seconds !== undefined) {
+    merged.dev_wallet_ready_in_seconds = existing.dev_wallet_ready_in_seconds;
+  }
+
+  currentUser = merged;
+  return currentUser;
+}
+
 // ========== LONG-RUN OPERATION HELPERS ==========
 
 function showBundlerProgressModal(totalSteps) {
@@ -149,7 +171,7 @@ async function pollForDevWallet() {
   try {
     const latestUser = await DatabaseAPI.getUserByWalletId(currentUser.user_wallet_id);
     if (latestUser) {
-      currentUser = latestUser;
+      mergeUserData(latestUser);
       updateBalanceDisplay(latestUser.distributor_balance_sol, latestUser.distributor_balance_spl);
       if (latestUser.dev_public_key) {
         updateDevWalletStatus(latestUser);
@@ -162,11 +184,14 @@ async function pollForDevWallet() {
 }
 
 function startDevWalletPolling() {
-  if (isDevWalletPolling || !currentUser || !DatabaseAPI) return;
+  if (!currentUser || !DatabaseAPI) return;
 
+  stopDevWalletPolling();
   isDevWalletPolling = true;
   pollForDevWallet();
-  devWalletPollInterval = setInterval(pollForDevWallet, DEV_WALLET_POLL_INTERVAL_MS);
+  const etaMs = (currentUser?.dev_wallet_ready_in_seconds || 0) * 1000;
+  const interval = Math.max(DEV_WALLET_POLL_INTERVAL_MS, etaMs || DEV_WALLET_POLL_INTERVAL_MS);
+  devWalletPollInterval = setInterval(pollForDevWallet, interval);
 }
 
 function stopDevWalletPolling() {
@@ -180,11 +205,21 @@ function stopDevWalletPolling() {
 function updateDevWalletStatus(user) {
   if (!user) return;
 
-  if (user.dev_public_key) {
+  const status = user.dev_wallet_status || (user.dev_public_key ? 'ready' : currentUser?.dev_wallet_status || 'pending');
+  const eta = user.dev_wallet_ready_in_seconds ?? currentUser?.dev_wallet_ready_in_seconds ?? null;
+
+  mergeUserData({
+    dev_public_key: user.dev_public_key,
+    dev_wallet_status: status,
+    dev_wallet_ready_in_seconds: eta
+  });
+
+  if (status === 'ready' && user.dev_public_key) {
     showDevWalletStatus('Developer wallet ready for token creation.', 'success');
     stopDevWalletPolling();
   } else {
-    showDevWalletStatus('Preparing developer wallet... (Est. 2 minutes)', 'info');
+    const etaText = eta ? ` (~${Math.ceil(eta / 60)} min)` : ' (Est. 2 minutes)';
+    showDevWalletStatus(`Preparing developer wallet...${etaText}`, 'info');
     startDevWalletPolling();
   }
 }
@@ -325,7 +360,7 @@ async function initializeUser() {
       return;
     }
     
-    currentUser = user;
+    mergeUserData(user);
     console.log('✅ User initialized:', user);
     
     // Update balance display from database
@@ -349,7 +384,7 @@ async function refreshUserData() {
     const updatedUser = await DatabaseAPI.getUserByWalletId(currentUser.user_wallet_id);
     
     if (updatedUser) {
-      currentUser = updatedUser;
+      mergeUserData(updatedUser);
       console.log('🔄 User data refreshed:', updatedUser);
       
       // Update balance display
@@ -411,6 +446,11 @@ function updateBalanceDisplay(solBalance, splBalance) {
   const profileSolEl = document.getElementById('profile-sol');
   const profileSplEl = document.getElementById('profile-spl');
   const sellSplBtn = document.getElementById('sell-spl-btn');
+  const distributorKeyEl = document.getElementById('distributor-public-key');
+  const devWalletChip = document.getElementById('dev-wallet-chip');
+  const devWalletChipText = document.getElementById('dev-wallet-chip-text');
+  const devWalletProfile = document.getElementById('dev-wallet-profile');
+  const devWalletAddressBtn = document.getElementById('dev-wallet-address');
   
   const formattedSol = DatabaseAPI.formatBalance(solBalance);
   const formattedSpl = DatabaseAPI.formatBalance(splBalance);
@@ -419,6 +459,28 @@ function updateBalanceDisplay(solBalance, splBalance) {
   if (splBalanceEl) splBalanceEl.textContent = formattedSpl;
   if (profileSolEl) profileSolEl.textContent = formattedSol;
   if (profileSplEl) profileSplEl.textContent = formattedSpl;
+  if (distributorKeyEl && currentUser?.distributor_public_key) {
+    distributorKeyEl.textContent = DatabaseAPI.truncateAddress(currentUser.distributor_public_key);
+  }
+  if (devWalletChip) {
+    if (currentUser?.dev_public_key) {
+      devWalletChip.style.display = 'none';
+    } else {
+      devWalletChip.style.display = 'flex';
+      if (devWalletChipText) {
+        const eta = currentUser?.dev_wallet_ready_in_seconds;
+        devWalletChipText.textContent = eta
+          ? `Preparing developer wallet... (~${Math.ceil(eta / 60)} min)`
+          : 'Preparing developer wallet... (Est. 2 minutes)';
+      }
+    }
+  }
+  if (devWalletProfile) {
+    devWalletProfile.style.display = currentUser?.dev_public_key ? 'flex' : 'none';
+  }
+  if (devWalletAddressBtn && currentUser?.dev_public_key) {
+    devWalletAddressBtn.dataset.key = currentUser.dev_public_key;
+  }
   
   // Show/hide sell SPL button based on SPL balance
   if (sellSplBtn) {
@@ -749,6 +811,16 @@ async function handleCreateInAppWallet() {
     const result = await OrchestratorAPI.createInAppWallet(walletId);
     
     if (result) {
+      // Merge immediate data from orchestrator so UI doesn't wait for DB replication
+      mergeUserData({
+        user_wallet_id: walletId,
+        distributor_public_key: result.distributorPublicKey,
+        distributor_balance_sol: result.distributorBalanceSol,
+        dev_public_key: result.devPublicKey,
+        dev_wallet_status: result.devWalletStatus,
+        dev_wallet_ready_in_seconds: result.devWalletReadyInSeconds
+      });
+      
       // Refresh user data from database
       await refreshUserData();
       
@@ -757,8 +829,14 @@ async function handleCreateInAppWallet() {
       await loadDashboardData();
       setupRealtimeSubscriptions();
       
-      // Show in-app wallet details and funding prompt
-      showInAppWalletCreated(result.inAppPublicKey, result.balanceSol);
+      // Show distributor/dev wallet details and funding prompt
+      showInAppWalletCreated({
+        distributorPublicKey: result.distributorPublicKey,
+        distributorBalanceSol: result.distributorBalanceSol,
+        devWalletStatus: result.devWalletStatus,
+        devPublicKey: result.devPublicKey,
+        devWalletReadyInSeconds: result.devWalletReadyInSeconds
+      });
     }
     
   } catch (error) {
@@ -770,7 +848,13 @@ async function handleCreateInAppWallet() {
 /**
  * Show in-app wallet created success with funding prompt
  */
-function showInAppWalletCreated(inAppPublicKey, balanceSol) {
+function showInAppWalletCreated({
+  distributorPublicKey,
+  distributorBalanceSol,
+  devWalletStatus = 'pending',
+  devPublicKey = null,
+  devWalletReadyInSeconds = null
+}) {
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
   modal.id = 'wallet-created-modal';
@@ -779,31 +863,55 @@ function showInAppWalletCreated(inAppPublicKey, balanceSol) {
     <div class="modal-content">
       <div class="modal-header">
         <span class="material-symbols-outlined" style="color: var(--md-sys-color-success);">check_circle</span>
-        <h3>In-App Wallet Created!</h3>
+        <h3>Distributor Wallet Created!</h3>
       </div>
       <div class="modal-body">
         <div class="wallet-created-content">
           <div class="success-icon">
             <span class="material-symbols-outlined">account_balance_wallet</span>
           </div>
-          <h4>Your in-app wallet is ready!</h4>
-          <p>Your new in-app wallet has been created and registered in the database.</p>
+          <h4>Your distributor wallet is ready!</h4>
+          <p>Your funding wallet has been created and registered. We'll prepare your developer wallet next.</p>
           
           <div class="wallet-details">
             <div class="detail-item">
-              <label>In-App Public Key:</label>
+              <label>Distributor Public Key:</label>
               <div class="key-display">
-                <span class="key-text">${DatabaseAPI.truncateAddress(inAppPublicKey, 8, 8)}</span>
-                <button class="copy-btn" onclick="copyToClipboard('${inAppPublicKey}')">
+                <span class="key-text">${DatabaseAPI.truncateAddress(distributorPublicKey, 8, 8)}</span>
+                <button class="copy-btn" onclick="copyToClipboard('${distributorPublicKey}')">
                   <span class="material-symbols-outlined">content_copy</span>
                 </button>
               </div>
             </div>
             <div class="detail-item">
-              <label>Current Balance:</label>
-              <span class="balance-display">${balanceSol} SOL</span>
+              <label>Current Distributor Balance:</label>
+              <span class="balance-display">${DatabaseAPI.formatBalance(distributorBalanceSol)} SOL</span>
             </div>
+            <div class="detail-item">
+              <label>Developer Wallet Status:</label>
+              <span class="status-chip ${devWalletStatus === 'ready' ? 'success' : 'warning'}">
+                ${devWalletStatus === 'ready' ? 'Ready' : 'Provisioning'}
+              </span>
+            </div>
+            ${devPublicKey ? `
+              <div class="detail-item">
+                <label>Developer Public Key:</label>
+                <div class="key-display">
+                  <span class="key-text">${DatabaseAPI.truncateAddress(devPublicKey, 8, 8)}</span>
+                  <button class="copy-btn" onclick="copyToClipboard('${devPublicKey}')">
+                    <span class="material-symbols-outlined">content_copy</span>
+                  </button>
+                </div>
+              </div>
+            ` : ''}
           </div>
+          
+          ${devWalletStatus !== 'ready' ? `
+            <div class="dev-wallet-countdown">
+              <span class="material-symbols-outlined">hourglass_top</span>
+              <p>Your developer wallet will be ready shortly.${devWalletReadyInSeconds ? ` Estimated time: ${Math.ceil(devWalletReadyInSeconds / 60)} minute(s).` : ''}</p>
+            </div>
+          ` : ''}
           
           <div class="funding-prompt">
             <div class="prompt-icon">
@@ -811,14 +919,14 @@ function showInAppWalletCreated(inAppPublicKey, balanceSol) {
             </div>
             <h5>Next Steps:</h5>
             <ol class="steps-list">
-              <li>Send SOL to your in-app wallet address above</li>
+              <li>Send SOL to your distributor wallet address above</li>
               <li>Click "Verify Balance" once you've sent the funds</li>
               <li>You need at least 1 SOL to create bundlers</li>
             </ol>
           </div>
           
           <div class="modal-actions">
-            <button class="secondary-button" onclick="copyToClipboard('${inAppPublicKey}')">
+            <button class="secondary-button" onclick="copyToClipboard('${distributorPublicKey}')">
               <span class="material-symbols-outlined">content_copy</span>
               Copy Address
             </button>

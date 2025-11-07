@@ -147,8 +147,13 @@ async function createInAppWallet(userWalletId) {
     showSnackbar('Distributor wallet created successfully!', 'success');
     
     return {
-      distributorPublicKey: response.distributor_public_key,
-      balanceSol: response.distributor_balance_sol
+      distributorPublicKey: response.distributor_public_key || response.in_app_public_key,
+      distributorBalanceSol: response.distributor_balance_sol ?? response.balance_sol ?? '0',
+      devPublicKey: response.dev_public_key || null,
+      devWalletStatus: response.dev_wallet_status || (response.dev_public_key ? 'ready' : 'pending'),
+      devWalletReadyInSeconds: typeof response.dev_wallet_ready_in_seconds === 'number'
+        ? response.dev_wallet_ready_in_seconds
+        : null
     };
     
   } catch (error) {
