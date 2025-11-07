@@ -94,20 +94,33 @@ async function getUserByWalletId(walletId) {
       throw new Error('Database not initialized');
     }
 
-    const { data, error } = await supabaseClient
+    const { data, error, status } = await supabaseClient
       .from('users')
       .select('*')
       .eq('user_wallet_id', walletId)
       .maybeSingle();
 
-    if (error && error.code !== 'PGRST116') throw error; // PGRST116 = no rows returned
+    if (error) {
+      const isNoRow = error.code === 'PGRST116' || status === 406;
+      if (isNoRow) {
+        return null;
+      }
+      handleDatabaseError(error, 'get user');
+      throw error;
+    }
 
-    return data || null;
+    if (!data) {
+      console.debug('[DatabaseAPI] No user found for wallet:', walletId);
+      return null;
+    }
+
+    return data;
   } catch (error) {
     if (error && (error.code === 'PGRST116' || error.status === 406)) {
       return null;
     }
-    return handleDatabaseError(error, 'get user');
+    handleDatabaseError(error, 'get user');
+    throw error;
   }
 }
 
