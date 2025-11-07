@@ -359,8 +359,9 @@ async function initializeUser() {
       showRegistrationPrompt();
       return;
     }
-    
+
     mergeUserData(user);
+    hideRegistrationPrompt();
     console.log('✅ User initialized:', user);
     
     // Update balance display from database
@@ -385,6 +386,7 @@ async function refreshUserData() {
     
     if (updatedUser) {
       mergeUserData(updatedUser);
+      hideRegistrationPrompt();
       console.log('🔄 User data refreshed:', updatedUser);
       
       // Update balance display
