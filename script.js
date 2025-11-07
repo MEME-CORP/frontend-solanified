@@ -801,12 +801,6 @@ async function loadTokens() {
  */
 async function handleCreateInAppWallet() {
   try {
-    if (!currentWallet || !OrchestratorAPI) {
-      throw new Error('Wallet not connected or orchestrator not available');
-    }
-    
-    const walletId = currentWallet.publicKey.toString();
-    
     // Create in-app wallet via orchestrator
     const result = await OrchestratorAPI.createInAppWallet(walletId);
     
