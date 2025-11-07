@@ -807,11 +807,21 @@ async function handleCreateInAppWallet() {
 
     const walletId = currentWallet.publicKey.toString();
 
-    if (currentUser?.distributor_public_key) {
+    // Always ensure we have the latest user record before attempting creation
+    let existingUser = currentUser;
+    if (!existingUser && DatabaseAPI) {
+      existingUser = await DatabaseAPI.getUserByWalletId(walletId);
+      if (existingUser) {
+        mergeUserData(existingUser);
+      }
+    }
+
+    if (existingUser?.distributor_public_key) {
       showSnackbar('Distributor wallet already exists for this user.', 'info');
+      hideRegistrationPrompt();
       await refreshUserData();
       await loadDashboardData();
-      updateDevWalletStatus(currentUser);
+      updateDevWalletStatus(existingUser);
       return;
     }
 
@@ -849,6 +859,20 @@ async function handleCreateInAppWallet() {
     
   } catch (error) {
     console.error('❌ Failed to create in-app wallet:', error);
+
+    const alreadyExists = typeof error?.message === 'string' && error.message.includes('already has an in-app wallet');
+    if (alreadyExists && DatabaseAPI) {
+      const latestUser = await DatabaseAPI.getUserByWalletId(currentWallet?.publicKey?.toString());
+      if (latestUser?.distributor_public_key) {
+        mergeUserData(latestUser);
+        hideRegistrationPrompt();
+        await loadDashboardData();
+        updateDevWalletStatus(latestUser);
+        showSnackbar('Distributor wallet already exists for this user.', 'info');
+        return;
+      }
+    }
+
     showSnackbar('Failed to create in-app wallet', 'error');
   }
 }
