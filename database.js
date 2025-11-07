@@ -98,12 +98,15 @@ async function getUserByWalletId(walletId) {
       .from('users')
       .select('*')
       .eq('user_wallet_id', walletId)
-      .single();
+      .maybeSingle();
 
     if (error && error.code !== 'PGRST116') throw error; // PGRST116 = no rows returned
-    
-    return data;
+
+    return data || null;
   } catch (error) {
+    if (error && (error.code === 'PGRST116' || error.status === 406)) {
+      return null;
+    }
     return handleDatabaseError(error, 'get user');
   }
 }
