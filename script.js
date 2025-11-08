@@ -424,9 +424,6 @@ function updateWalletUI() {
     walletStatus.style.display = 'block';
     walletAddress.textContent = DatabaseAPI.truncateAddress(currentWallet.publicKey.toString());
     
-    // Show dashboard
-    document.getElementById('dashboard').style.display = 'grid';
-    
   } else {
     // Reset connect button
     connectBtn.innerHTML = `
