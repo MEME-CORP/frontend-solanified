@@ -89,25 +89,30 @@ function truncateAddress(address, startChars = 4, endChars = 4) {
  * Get user by wallet ID
  */
 async function getUserByWalletId(walletId) {
-  if (!supabaseClient) {
-    throw new Error('Database not initialized');
-  }
+  try {
+    if (!supabaseClient) {
+      throw new Error('Database not initialized');
+    }
 
-  const { data, error, status } = await supabaseClient
-    .from('users')
-    .select('*')
-    .eq('user_wallet_id', walletId)
-    .maybeSingle();
+    const { data, error } = await supabaseClient
+      .from('users')
+      .select('*')
+      .eq('user_wallet_id', walletId)
+      .maybeSingle();
 
-  if (error) {
-    const isNoRow = error.code === 'PGRST116' || status === 406;
-    if (isNoRow) {
+    if (error) {
+      console.error('❌ Supabase error in getUserByWalletId:', error);
+      throw new Error(`Database query failed: ${error.message}`);
+    }
+
+    return data ?? null;
+  } catch (error) {
+    if (error?.code === 'PGRST116' || error?.status === 406) {
       return null;
     }
+    handleDatabaseError(error, 'get user');
     throw error;
   }
-
-  return data ?? null;
 }
 
 /**
