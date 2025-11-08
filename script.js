@@ -1801,14 +1801,28 @@ window.SolanafiedApp = {
   toggleTheme
 };
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
-    initializeTheme();
-    updateWalletUI();
-    setupRealtimeSubscriptions();
-  });
-} else {
+function initializeApp() {
+  console.log('🚀 Initializing Solanafied...');
   initializeTheme();
+
+  const connectBtn = document.getElementById('wallet-connect');
+  if (connectBtn && !connectBtn.dataset.initialized) {
+    connectBtn.addEventListener('click', connectWallet);
+    connectBtn.dataset.initialized = 'true';
+  }
+
+  const themeToggleBtn = document.getElementById('theme-toggle');
+  if (themeToggleBtn && !themeToggleBtn.dataset.initialized) {
+    themeToggleBtn.addEventListener('click', toggleTheme);
+    themeToggleBtn.dataset.initialized = 'true';
+    updateThemeToggleIcon();
+  }
+
   updateWalletUI();
-  setupRealtimeSubscriptions();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeApp);
+} else {
+  initializeApp();
 }
