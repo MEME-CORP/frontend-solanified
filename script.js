@@ -348,18 +348,20 @@ async function initializeUser() {
     if (!currentWallet || !DatabaseAPI) {
       throw new Error('Wallet not connected or database not available');
     }
-    
+
     const walletId = currentWallet.publicKey.toString();
-    
+    console.log('[App] initializeUser start for wallet', walletId);
+
     // Try to get existing user
     let user = await DatabaseAPI.getUserByWalletId(walletId);
-    
+
     if (!user) {
-      // Show registration prompt for new users
+      console.log('[App] No user record found, showing registration prompt');
       showRegistrationPrompt();
       return;
     }
 
+    console.log('[App] User record found, merging data');
     mergeUserData(user);
     hideRegistrationPrompt();
     showDashboard();
@@ -381,11 +383,12 @@ async function initializeUser() {
 async function refreshUserData() {
   try {
     if (!currentUser || !DatabaseAPI) return;
-    
-    // Get updated user data from database
+
+    console.log('[App] refreshUserData for', currentUser.user_wallet_id);
     const updatedUser = await DatabaseAPI.getUserByWalletId(currentUser.user_wallet_id);
-    
+
     if (updatedUser) {
+      console.log('[App] refreshUserData received user, merging and updating UI');
       mergeUserData(updatedUser);
       hideRegistrationPrompt();
       showDashboard();
@@ -524,6 +527,7 @@ function showDashboard() {
  * Show registration prompt for unregistered users
  */
 function showRegistrationPrompt() {
+  console.log('[UI] showRegistrationPrompt invoked');
   // Hide dashboard
   document.getElementById('dashboard').style.display = 'none';
   
@@ -590,6 +594,7 @@ function showRegistrationPrompt() {
  * Hide registration prompt
  */
 function hideRegistrationPrompt() {
+  console.log('[UI] hideRegistrationPrompt invoked');
   const registrationPrompt = document.getElementById('registration-prompt');
   if (registrationPrompt) {
     registrationPrompt.style.display = 'none';

@@ -94,6 +94,8 @@ async function getUserByWalletId(walletId) {
       throw new Error('Database not initialized');
     }
 
+    console.log('[DatabaseAPI] Fetching user by wallet ID:', walletId);
+
     const { data, error } = await supabaseClient
       .from('users')
       .select('*')
@@ -103,6 +105,12 @@ async function getUserByWalletId(walletId) {
     if (error) {
       console.error('❌ Supabase error in getUserByWalletId:', error);
       throw new Error(`Database query failed: ${error.message}`);
+    }
+
+    if (!data) {
+      console.log('[DatabaseAPI] No user found for wallet', walletId);
+    } else {
+      console.log('[DatabaseAPI] User fetched successfully for wallet', walletId, data);
     }
 
     return data ?? null;
