@@ -96,7 +96,7 @@ jspm_packages/
 Thumbs.db
 
 # Windsurf
-.windsurf/
+.windsurf/a
 
 # Generated environment bundle
 env.js
