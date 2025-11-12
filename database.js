@@ -13,9 +13,36 @@
 
 // ========== SUPABASE CONFIGURATION ==========
 
-// Supabase credentials from environment
-const SUPABASE_URL = 'https://rxkzujdzdtvxtyuhiane.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ4a3p1amR6ZHR2eHR5dWhpYW5lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcxMDM0NTksImV4cCI6MjA3MjY3OTQ1OX0.imamrxKrzbBKJBAcbQYXpRTFBx34J_mAXSWNCjQ0AGM';
+const missingEnvWarnings = new Set();
+
+function resolveEnvVar(key) {
+  try {
+    if (typeof window !== 'undefined') {
+      if (window[key]) {
+        return window[key];
+      }
+      const browserEnv = window.__ENV || window.ENV || window.SOLANAFIED_ENV || {};
+      if (browserEnv[key]) {
+        return browserEnv[key];
+      }
+    }
+
+    if (typeof process !== 'undefined' && process.env && process.env[key]) {
+      return process.env[key];
+    }
+  } catch (error) {
+    console.warn(`[Env] Failed to resolve environment variable ${key}:`, error);
+  }
+
+  if (!missingEnvWarnings.has(key)) {
+    console.warn(`[Env] ${key} is not defined. Configure it via deployment environment variables.`);
+    missingEnvWarnings.add(key);
+  }
+  return null;
+}
+
+const SUPABASE_URL = resolveEnvVar('SUPABASE_URL');
+const SUPABASE_ANON_KEY = resolveEnvVar('SUPABASE_ANON_KEY');
 
 // Initialize Supabase client
 let supabaseClient = null;
@@ -29,7 +56,10 @@ function initializeDatabase() {
     if (typeof supabase === 'undefined') {
       throw new Error('Supabase library not loaded. Make sure to include the Supabase script in your HTML.');
     }
-    
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      throw new Error('Supabase credentials missing. Set SUPABASE_URL and SUPABASE_ANON_KEY in your deployment environment.');
+    }
+
     supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     console.log('✅ Database connection initialized');
     return true;
