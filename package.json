@@ -4,10 +4,10 @@
   "description": "Unified Solana Ecosystem DApp with Material 3 Design",
   "main": "index.html",
   "scripts": {
-    "start": "http-server . -p $PORT -c-1 --cors",
-    "dev": "http-server . -p 3000 -c-1 --cors",
-    "build": "echo 'Static build complete'",
-    "serve": "http-server . -p 8080 -c-1 --cors"
+    "start": "node scripts/generate-env.js && http-server . -p $PORT -c-1 --cors",
+    "dev": "node scripts/generate-env.js && http-server . -p 3000 -c-1 --cors",
+    "build": "node scripts/generate-env.js && echo 'Static build complete'",
+    "serve": "node scripts/generate-env.js && http-server . -p 8080 -c-1 --cors"
   },
   "keywords": [
     "solana",

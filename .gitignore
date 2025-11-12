@@ -97,3 +97,6 @@ Thumbs.db
 
 # Windsurf
 .windsurf/
+
+# Generated environment bundle
+env.js
