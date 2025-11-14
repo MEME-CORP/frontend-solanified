@@ -74,7 +74,7 @@
                             <span class="material-symbols-outlined">send</span>
                             Transfer SOL Out
                         </button>
-                        <button class="secondary-button" onclick="showSellSplTokenModal()" id="sell-spl-btn" style="display: none;">
+                        <button class="secondary-button" onclick="sellDistributorSpl()" id="sell-spl-btn" style="display: none;">
                             <span class="material-symbols-outlined">sell</span>
                             Sell SPL Tokens
                         </button>
@@ -136,6 +136,20 @@
                                         <span class="material-symbols-outlined" aria-hidden="true">content_copy</span>
                                         <span class="link-button-text">Copy developer public key</span>
                                     </button>
+                                    <div class="dev-balance-grid">
+                                        <div class="balance-row">
+                                            <span>Dev SOL:</span>
+                                            <span id="dev-sol-balance">0.000</span>
+                                        </div>
+                                        <div class="balance-row">
+                                            <span>Dev SPL:</span>
+                                            <span id="dev-spl-balance">0.000</span>
+                                        </div>
+                                        <button class="secondary-button" id="sell-dev-spl-btn" style="display: none;" onclick="sellDevSpl()">
+                                            <span class="material-symbols-outlined">sell</span>
+                                            Sell Dev SPL
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>

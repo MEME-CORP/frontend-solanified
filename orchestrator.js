@@ -320,11 +320,12 @@ async function sellToken(userWalletId, sellPercent) {
 /**
  * Sell SPL tokens from in-app wallet
  */
-async function sellSplFromWallet(userWalletId, sellPercent) {
+async function sellSplFromWallet(userWalletId, sellPercent, options = {}) {
   try {
     console.log('📡 [ORCHESTRATOR] sellSplFromWallet called with:', {
       userWalletId,
       sellPercent,
+      walletType: options.walletType || 'distributor',
       endpoint: '/api/orchestrator/sell-spl-from-wallet'
     });
     
@@ -334,6 +335,10 @@ async function sellSplFromWallet(userWalletId, sellPercent) {
       user_wallet_id: userWalletId,
       sell_percent: sellPercent
     };
+
+    if (options.walletType && ['developer', 'distributor'].includes(options.walletType)) {
+      requestData.wallet_type = options.walletType;
+    }
     
     console.log('📡 [ORCHESTRATOR] Making request with data:', requestData);
     

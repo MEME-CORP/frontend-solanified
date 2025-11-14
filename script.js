@@ -25,6 +25,8 @@ let currentTheme = 'light';
 const DEV_WALLET_POLL_INTERVAL_MS = 20000;
 const BUNDLER_PROGRESS_STEP_DURATION_MS = 90000;
 const DEV_WALLET_REQUIRED_MESSAGE = 'Your developer wallet is still being set up. Please wait a moment.';
+const DEV_WALLET_MIN_SOL_FOR_TOKENS = 0.1;
+const TOKEN_LOGO_MAX_BYTES = 2 * 1024 * 1024; // 2 MB
 const THEME_STORAGE_KEY = 'solanafied-theme';
 
 function mergeUserData(partialUser = {}) {
@@ -179,6 +181,35 @@ function ensureDevWalletStatusElement() {
   let statusEl = document.getElementById('dev-wallet-status');
   if (!statusEl) return null;
   return statusEl;
+}
+
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = (err) => reject(err);
+    reader.readAsDataURL(file);
+  });
+}
+
+function validateTokenFormData(tokenData = {}) {
+  const errors = [];
+  if (!tokenData.name) {
+    errors.push('Token name is required.');
+  }
+  if (!tokenData.symbol) {
+    errors.push('Token symbol is required.');
+  }
+  if (tokenData.symbol && tokenData.symbol.length > 5) {
+    errors.push('Token symbol must be 5 characters or fewer.');
+  }
+  if (tokenData.devBuyAmount < 0.05) {
+    errors.push('Dev buy amount must be at least 0.05 SOL.');
+  }
+  if (tokenData.logoFile && tokenData.logoFile.size > TOKEN_LOGO_MAX_BYTES) {
+    errors.push('Logo file must be smaller than 2 MB.');
+  }
+  return errors;
 }
 
 function showDevWalletStatus(message, state = 'info') {
@@ -367,9 +398,148 @@ async function connectWallet() {
     }
     
     showSnackbar(message, 'error');
-  } finally {
-    showLoadingOverlay(false);
   }
+}
+
+function showSellSplTokenModal(arg) {
+  try {
+    if (!currentUser) {
+      showSnackbar('Connect your wallet first', 'warning');
+      return;
+    }
+
+    let source = 'distributor';
+    let bundlerId = null;
+
+    if (typeof arg === 'object' && arg !== null) {
+      source = arg.source || source;
+      bundlerId = arg.bundlerId ?? null;
+    } else if (typeof arg === 'string') {
+      if (arg.toLowerCase() === 'developer' || arg.toLowerCase() === 'dev') {
+        source = 'developer';
+      }
+    } else if (typeof arg === 'number') {
+      bundlerId = arg;
+    }
+
+    let balance = 0;
+
+    if (source === 'developer') {
+      balance = parseFloat(currentUser?.dev_balance_spl || '0');
+    } else if (bundlerId) {
+      const bundler = currentUser?.bundlers?.find(b => b.id === bundlerId);
+      balance = parseFloat(bundler?.total_balance_spl || '0');
+    } else {
+      balance = parseFloat(currentUser?.distributor_balance_spl || '0');
+    }
+
+    if (balance <= 0) {
+      showSnackbar('No SPL tokens available to sell.', 'warning');
+      return;
+    }
+
+    if (sellSplModal) {
+      sellSplModal.remove();
+    }
+
+    sellSplModal = document.createElement('div');
+    sellSplModal.className = 'modal-overlay';
+    sellSplModal.id = 'sell-spl-modal';
+    sellSplModal.dataset.source = source;
+    if (bundlerId) {
+      sellSplModal.dataset.bundlerId = bundlerId;
+    }
+
+    const walletLabel = source === 'developer' ? 'Developer Wallet' : 'Distributor Wallet';
+
+    sellSplModal.innerHTML = `
+      <div class="modal-content">
+        <div class="modal-header">
+          <span class="material-symbols-outlined">sell</span>
+          <h3>Sell SPL (${walletLabel})</h3>
+        </div>
+        <div class="modal-body">
+          <p>Available SPL balance: <strong>${DatabaseAPI.formatBalance(balance)}</strong></p>
+          <div class="form-group">
+            <label for="sell-spl-percent">Sell Percentage</label>
+            <input id="sell-spl-percent" type="number" min="1" max="100" step="1" value="50" />
+            <small>Enter a value between 1 and 100</small>
+          </div>
+          <div class="modal-actions">
+            <button class="secondary-button" type="button" onclick="closeSellSplModal()">
+              <span class="material-symbols-outlined">close</span>
+              Cancel
+            </button>
+            <button class="primary-button" type="button" onclick="confirmSellSplFromModal()">
+              <span class="material-symbols-outlined">sell</span>
+              Sell Tokens
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(sellSplModal);
+    const percentInput = sellSplModal.querySelector('#sell-spl-percent');
+    if (percentInput) {
+      percentInput.focus();
+    }
+  } catch (error) {
+    console.error('❌ Failed to show sell SPL modal:', error);
+    showSnackbar('Failed to open sell modal', 'error');
+  }
+}
+
+function closeSellSplModal() {
+  if (sellSplModal) {
+    sellSplModal.remove();
+    sellSplModal = null;
+  }
+}
+
+async function confirmSellSplFromModal() {
+  if (!sellSplModal) return;
+  const percentInput = sellSplModal.querySelector('#sell-spl-percent');
+  const percent = parseFloat(percentInput?.value || '0');
+  if (isNaN(percent) || percent <= 0 || percent > 100) {
+    showSnackbar('Enter a valid percentage between 1 and 100.', 'warning');
+    return;
+  }
+
+  const source = sellSplModal.dataset.source || 'distributor';
+  closeSellSplModal();
+  await executeSellSpl(percent, source);
+}
+
+async function executeSellSpl(percent, source = 'distributor') {
+  try {
+    if (!currentUser || !OrchestratorAPI) {
+      showSnackbar('Please create a distributor wallet first', 'warning');
+      return;
+    }
+
+    if (source === 'developer' && !currentUser.dev_public_key) {
+      showSnackbar('Developer wallet is not ready yet.', 'warning');
+      return;
+    }
+
+    const options = source === 'developer' ? { walletType: 'developer' } : { walletType: 'distributor' };
+    const response = await OrchestratorAPI.sellSplFromWallet(currentUser.user_wallet_id, percent, options);
+    if (response) {
+      await refreshUserData();
+      showSnackbar(`Sell order (${percent}%) submitted for ${source === 'developer' ? 'developer' : 'distributor'} wallet.`, 'success');
+    }
+  } catch (error) {
+    console.error('❌ Failed to sell SPL tokens:', error);
+  }
+}
+
+function sellDevSpl() {
+  showSellSplTokenModal({ source: 'developer' });
+}
+
+function sellDistributorSpl() {
+  showSellSplTokenModal({ source: 'distributor' });
 }
 
 /**
@@ -521,6 +691,10 @@ function updateBalanceDisplay(solBalance, splBalance) {
   const devWalletChipText = document.getElementById('dev-wallet-chip-text');
   const devWalletProfile = document.getElementById('dev-wallet-profile');
   const devWalletAddressBtn = document.getElementById('dev-wallet-address');
+  const devSolBalanceEl = document.getElementById('dev-sol-balance');
+  const devSplBalanceEl = document.getElementById('dev-spl-balance');
+  const sellDevSplBtn = document.getElementById('sell-dev-spl-btn');
+
   
   const formattedSol = DatabaseAPI.formatBalance(solBalance);
   const formattedSpl = DatabaseAPI.formatBalance(splBalance);
@@ -546,12 +720,23 @@ function updateBalanceDisplay(solBalance, splBalance) {
     }
   }
   if (devWalletProfile) {
-    devWalletProfile.style.display = currentUser?.dev_public_key ? 'flex' : 'none';
+    const hasDevWallet = currentUser?.dev_public_key;
+    devWalletProfile.style.display = hasDevWallet ? 'flex' : 'none';
+    if (hasDevWallet && devWalletAddressBtn) {
+      devWalletAddressBtn.querySelector('.link-button-text').textContent = DatabaseAPI.truncateAddress(currentUser.dev_public_key, 6, 6);
+      devWalletAddressBtn.onclick = () => copyToClipboard(currentUser.dev_public_key);
+    }
+    if (devSolBalanceEl) {
+      devSolBalanceEl.textContent = DatabaseAPI.formatBalance(currentUser?.dev_balance_sol);
+    }
+    if (devSplBalanceEl) {
+      devSplBalanceEl.textContent = DatabaseAPI.formatBalance(currentUser?.dev_balance_spl);
+    }
+    if (sellDevSplBtn) {
+      const hasDevSpl = parseFloat(currentUser?.dev_balance_spl || '0') > 0;
+      sellDevSplBtn.style.display = hasDevSpl ? 'flex' : 'none';
+    }
   }
-  if (devWalletAddressBtn && currentUser?.dev_public_key) {
-    devWalletAddressBtn.dataset.key = currentUser.dev_public_key;
-  }
-  
   // Show/hide sell SPL button based on SPL balance
   if (sellSplBtn) {
     const hasSplTokens = parseFloat(splBalance) > 0;
@@ -1169,6 +1354,7 @@ function closeBundlerSuccessModal() {
 }
 
 let tokenCreationModal = null;
+let sellSplModal = null;
 
 function showTokenCreationForm() {
   if (tokenCreationModal) {
@@ -1199,6 +1385,11 @@ function showTokenCreationForm() {
           <textarea id="token-description" name="token-description" rows="3" placeholder="Tell us about your token"></textarea>
         </div>
         <div class="form-group">
+          <label for="token-logo">Logo</label>
+          <input id="token-logo" name="token-logo" type="file" accept="image/*" />
+          <small>PNG, JPG, GIF up to 2 MB</small>
+        </div>
+        <div class="form-group">
           <label for="token-twitter">Twitter URL</label>
           <input id="token-twitter" name="token-twitter" type="url" placeholder="https://twitter.com/yourproject" />
         </div>
@@ -1212,7 +1403,16 @@ function showTokenCreationForm() {
         </div>
         <div class="form-group">
           <label for="dev-buy-amount">Dev Buy Amount (SOL)</label>
-          <input id="dev-buy-amount" name="dev-buy-amount" type="number" min="0" max="1" step="0.01" placeholder="0.2" />
+          <input id="dev-buy-amount" name="dev-buy-amount" type="number" min="0.05" max="1" step="0.01" placeholder="0.20" value="0.20" required />
+          <small>Must be ≤ your developer wallet SOL balance</small>
+        </div>
+        <div class="form-group">
+          <label for="slippage">Slippage (%)</label>
+          <input id="slippage" name="slippage" type="number" min="0.5" max="5" step="0.1" value="1.0" />
+        </div>
+        <div class="form-group">
+          <label for="priority-fee">Priority Fee (SOL)</label>
+          <input id="priority-fee" name="priority-fee" type="number" min="0" step="0.000001" value="0.000005" />
         </div>
         <div class="modal-actions">
           <button type="button" class="secondary-button" onclick="closeTokenCreationForm()">
@@ -1257,11 +1457,96 @@ async function handleTokenCreationSubmit(event) {
     twitter: formData.get('token-twitter')?.trim(),
     telegram: formData.get('token-telegram')?.trim(),
     website: formData.get('token-website')?.trim(),
-    devBuyAmount: parseFloat(formData.get('dev-buy-amount')) || 0
+    devBuyAmount: parseFloat(formData.get('dev-buy-amount')) || 0,
+    slippage: parseFloat(formData.get('slippage')) || 1.0,
+    priorityFee: formData.get('priority-fee')?.trim() || '0.000005',
+    logoFile: formData.get('token-logo')
   };
+
+  if (tokenData.logoFile && tokenData.logoFile.size === 0) {
+    tokenData.logoFile = null;
+  }
+
+  const validationErrors = validateTokenFormData(tokenData);
+  if (validationErrors.length) {
+    showSnackbar(validationErrors[0], 'error');
+    return;
+  }
 
   closeTokenCreationForm();
   await submitTokenCreation(tokenData);
+}
+
+async function submitTokenCreation(tokenData) {
+  if (!currentUser || !OrchestratorAPI || !DatabaseAPI) {
+    showSnackbar('Missing wallet context. Please reconnect and try again.', 'error');
+    return;
+  }
+
+  try {
+    if (!currentUser.dev_public_key) {
+      showSnackbar(DEV_WALLET_REQUIRED_MESSAGE, 'warning');
+      return;
+    }
+
+    const devBalance = parseFloat(currentUser?.dev_balance_sol || '0');
+    if (devBalance < DEV_WALLET_MIN_SOL_FOR_TOKENS) {
+      showSnackbar(`Developer wallet needs at least ${DEV_WALLET_MIN_SOL_FOR_TOKENS} SOL before creating tokens.`, 'warning');
+      return;
+    }
+
+    if (tokenData.devBuyAmount > devBalance) {
+      showSnackbar('Dev buy amount exceeds developer wallet SOL balance.', 'error');
+      return;
+    }
+
+    const logoBase64 = tokenData.logoFile ? await readFileAsBase64(tokenData.logoFile) : '';
+
+    const payload = {
+      name: tokenData.name,
+      symbol: tokenData.symbol,
+      description: tokenData.description || '',
+      twitter: tokenData.twitter || '',
+      telegram: tokenData.telegram || '',
+      website: tokenData.website || '',
+      devBuyAmount: tokenData.devBuyAmount.toString(),
+      slippage: tokenData.slippage,
+      priorityFee: tokenData.priorityFee || '0.000005',
+      logoBase64
+    };
+
+    const orchestratorResponse = await OrchestratorAPI.createAndBuyToken(currentUser.user_wallet_id, payload);
+    if (!orchestratorResponse) {
+      return;
+    }
+
+    const tokenRecord = {
+      name: tokenData.name,
+      symbol: tokenData.symbol,
+      description: tokenData.description || null,
+      image_url: orchestratorResponse.image_url || orchestratorResponse.imageUrl || null,
+      twitter: tokenData.twitter || null,
+      telegram: tokenData.telegram || null,
+      website: tokenData.website || null,
+      dev_buy_amount: tokenData.devBuyAmount,
+      contract_address: orchestratorResponse.contract_address || orchestratorResponse.contractAddress || null
+    };
+
+    await DatabaseAPI.createToken(currentUser.user_wallet_id, tokenRecord);
+    await refreshUserData();
+    await loadTokens();
+    showSnackbar(`Token "${tokenData.name}" saved to dashboard`, 'success');
+  } catch (error) {
+    if (error?.code === 'DEV_WALLET_NOT_READY') {
+      showSnackbar('Developer wallet is still being prepared. Please try again shortly.', 'warning');
+      updateDevWalletStatus(currentUser);
+    } else {
+      console.error('❌ Failed to submit token creation:', error);
+      showSnackbar('Failed to create token', 'error');
+    }
+  } finally {
+    showLoadingOverlay(false);
+  }
 }
 
 /**
@@ -1705,6 +1990,12 @@ async function addToken() {
     // Ensure developer wallet is ready
     if (!currentUser.dev_public_key) {
       showSnackbar(DEV_WALLET_REQUIRED_MESSAGE, 'warning');
+      return;
+    }
+
+    const devBalance = parseFloat(currentUser?.dev_balance_sol || '0');
+    if (isNaN(devBalance) || devBalance < DEV_WALLET_MIN_SOL_FOR_TOKENS) {
+      showSnackbar(`Developer wallet needs at least ${DEV_WALLET_MIN_SOL_FOR_TOKENS} SOL before creating tokens.`, 'warning');
       return;
     }
 
