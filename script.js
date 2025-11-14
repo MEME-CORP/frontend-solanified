@@ -439,6 +439,10 @@ async function connectWallet() {
   }
 }
 
+async function showBundlerSellModal(bundlerId) {
+  showSellSplTokenModal({ source: 'bundler', bundlerId });
+}
+
 async function showSellSplTokenModal(arg) {
   try {
     if (!currentUser) {
@@ -503,7 +507,11 @@ async function showSellSplTokenModal(arg) {
       sellSplModal.dataset.bundlerId = bundlerId;
     }
 
-    const walletLabel = source === 'developer' ? 'Developer Wallet' : 'Distributor Wallet';
+    const walletLabel = source === 'developer'
+      ? 'Developer Wallet'
+      : source === 'bundler'
+        ? 'Bundler (child wallets)'
+        : 'Distributor Wallet';
 
     sellSplModal.innerHTML = `
       <div class="modal-content">
