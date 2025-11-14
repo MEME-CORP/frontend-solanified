@@ -694,6 +694,7 @@ function updateBalanceDisplay(solBalance, splBalance) {
   const devSolBalanceEl = document.getElementById('dev-sol-balance');
   const devSplBalanceEl = document.getElementById('dev-spl-balance');
   const sellDevSplBtn = document.getElementById('sell-dev-spl-btn');
+  const checkDevBalanceBtn = document.getElementById('check-dev-balance-btn');
 
   
   const formattedSol = DatabaseAPI.formatBalance(solBalance);
@@ -736,6 +737,9 @@ function updateBalanceDisplay(solBalance, splBalance) {
       const hasDevSpl = parseFloat(currentUser?.dev_balance_spl || '0') > 0;
       sellDevSplBtn.style.display = hasDevSpl ? 'flex' : 'none';
     }
+  }
+  if (checkDevBalanceBtn) {
+    checkDevBalanceBtn.style.display = currentUser?.dev_public_key ? 'flex' : 'none';
   }
   // Show/hide sell SPL button based on SPL balance
   if (sellSplBtn) {
@@ -1371,60 +1375,129 @@ function showTokenCreationForm() {
         <span class="material-symbols-outlined">token</span>
         <h3>Create Token</h3>
       </div>
-      <form id="token-creation-form" class="modal-body">
-        <div class="form-group">
-          <label for="token-name">Token Name</label>
-          <input id="token-name" name="token-name" type="text" placeholder="e.g. Solanafied" required />
-        </div>
-        <div class="form-group">
-          <label for="token-symbol">Symbol</label>
-          <input id="token-symbol" name="token-symbol" type="text" maxlength="5" placeholder="e.g. SOLFD" required />
-        </div>
-        <div class="form-group">
-          <label for="token-description">Description</label>
-          <textarea id="token-description" name="token-description" rows="3" placeholder="Tell us about your token"></textarea>
-        </div>
-        <div class="form-group">
-          <label for="token-logo">Logo</label>
-          <input id="token-logo" name="token-logo" type="file" accept="image/*" />
-          <small>PNG, JPG, GIF up to 2 MB</small>
-        </div>
-        <div class="form-group">
-          <label for="token-twitter">Twitter URL</label>
-          <input id="token-twitter" name="token-twitter" type="url" placeholder="https://twitter.com/yourproject" />
-        </div>
-        <div class="form-group">
-          <label for="token-telegram">Telegram URL</label>
-          <input id="token-telegram" name="token-telegram" type="url" placeholder="https://t.me/yourproject" />
-        </div>
-        <div class="form-group">
-          <label for="token-website">Website</label>
-          <input id="token-website" name="token-website" type="url" placeholder="https://yourproject.com" />
-        </div>
-        <div class="form-group">
-          <label for="dev-buy-amount">Dev Buy Amount (SOL)</label>
-          <input id="dev-buy-amount" name="dev-buy-amount" type="number" min="0.05" max="1" step="0.01" placeholder="0.20" value="0.20" required />
-          <small>Must be ≤ your developer wallet SOL balance</small>
-        </div>
-        <div class="form-group">
-          <label for="slippage">Slippage (%)</label>
-          <input id="slippage" name="slippage" type="number" min="0.5" max="5" step="0.1" value="1.0" />
-        </div>
-        <div class="form-group">
-          <label for="priority-fee">Priority Fee (SOL)</label>
-          <input id="priority-fee" name="priority-fee" type="number" min="0" step="0.000001" value="0.000005" />
-        </div>
-        <div class="modal-actions">
-          <button type="button" class="secondary-button" onclick="closeTokenCreationForm()">
-            <span class="material-symbols-outlined">close</span>
-            Cancel
-          </button>
-          <button type="submit" class="primary-button">
-            <span class="material-symbols-outlined">rocket_launch</span>
-            Create Token
-          </button>
-        </div>
-      </form>
+      <div class="modal-body token-modal-grid">
+        <form id="token-creation-form" class="token-form" autocomplete="off">
+          <section class="token-form-section">
+            <div class="section-heading">
+              <h4>Brand Basics</h4>
+              <p>These details appear on Pump.fun and Solanafied dashboards.</p>
+            </div>
+            <div class="form-row two-col">
+              <div class="form-group">
+                <label for="token-name">Token Name</label>
+                <input id="token-name" name="token-name" type="text" placeholder="e.g. Solanafied" maxlength="32" required />
+              </div>
+              <div class="form-group">
+                <label for="token-symbol">Symbol</label>
+                <input id="token-symbol" name="token-symbol" type="text" maxlength="5" placeholder="e.g. SOLFD" required />
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="token-description">Description</label>
+              <textarea id="token-description" name="token-description" rows="3" maxlength="240" placeholder="Tell us about your token"></textarea>
+              <small>Max 240 characters.</small>
+            </div>
+            <div class="form-group">
+              <label>Token Logo</label>
+              <label for="token-logo" class="token-logo-dropzone">
+                <input id="token-logo" name="token-logo" type="file" accept="image/*" hidden />
+                <div class="dropzone-icon">
+                  <span class="material-symbols-outlined">upload</span>
+                </div>
+                <div>
+                  <p>Drop an image or click to browse</p>
+                  <small>PNG, JPG, GIF up to 2 MB</small>
+                </div>
+              </label>
+            </div>
+          </section>
+
+          <section class="token-form-section">
+            <div class="section-heading">
+              <h4>Social Links</h4>
+              <p>Optional links help future holders research quickly.</p>
+            </div>
+            <div class="form-group">
+              <label for="token-twitter">Twitter URL</label>
+              <input id="token-twitter" name="token-twitter" type="url" placeholder="https://twitter.com/yourproject" />
+            </div>
+            <div class="form-group">
+              <label for="token-telegram">Telegram URL</label>
+              <input id="token-telegram" name="token-telegram" type="url" placeholder="https://t.me/yourproject" />
+            </div>
+            <div class="form-group">
+              <label for="token-website">Website</label>
+              <input id="token-website" name="token-website" type="url" placeholder="https://yourproject.com" />
+            </div>
+          </section>
+
+          <section class="token-form-section">
+            <div class="section-heading">
+              <h4>Pump.fun Parameters</h4>
+              <p>These controls affect the launch economics.</p>
+            </div>
+            <div class="form-row two-col">
+              <div class="form-group">
+                <label for="dev-buy-amount">Dev Buy Amount (SOL)</label>
+                <input id="dev-buy-amount" name="dev-buy-amount" type="number" min="0.05" max="5" step="0.01" placeholder="0.20" value="0.20" required />
+                <small>Must be ≤ your developer wallet SOL balance.</small>
+              </div>
+              <div class="form-group">
+                <label for="slippage">Slippage (%)</label>
+                <input id="slippage" name="slippage" type="number" min="0.5" max="5" step="0.1" value="1.0" />
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="priority-fee">Priority Fee (SOL)</label>
+              <input id="priority-fee" name="priority-fee" type="number" min="0" step="0.000001" value="0.000005" />
+              <small>Higher fees speed up confirmation on congested slots.</small>
+            </div>
+          </section>
+
+          <div class="modal-actions">
+            <button type="button" class="secondary-button" onclick="closeTokenCreationForm()">
+              <span class="material-symbols-outlined">close</span>
+              Cancel
+            </button>
+            <button type="submit" class="primary-button">
+              <span class="material-symbols-outlined">rocket_launch</span>
+              Create Token
+            </button>
+          </div>
+        </form>
+
+        <aside class="token-preview-panel" aria-live="polite">
+          <div class="token-preview-card">
+            <div class="preview-logo" id="token-preview-logo">
+              <span class="material-symbols-outlined">token</span>
+            </div>
+            <div class="preview-meta">
+              <h4 id="token-preview-name">Your token name</h4>
+              <p id="token-preview-symbol">SYMB</p>
+            </div>
+            <p id="token-preview-description">Add a compelling description to help holders understand your mission.</p>
+            <ul class="preview-socials" id="token-preview-socials">
+              <li data-social="twitter" class="hidden"><span class="material-symbols-outlined">alternate_email</span> twitter.com</li>
+              <li data-social="telegram" class="hidden"><span class="material-symbols-outlined">forum</span> telegram</li>
+              <li data-social="website" class="hidden"><span class="material-symbols-outlined">language</span> website</li>
+            </ul>
+            <div class="preview-pump-params">
+              <div>
+                <label>Dev Buy</label>
+                <strong id="preview-dev-buy">0.20 SOL</strong>
+              </div>
+              <div>
+                <label>Slippage</label>
+                <strong id="preview-slippage">1.0%</strong>
+              </div>
+              <div>
+                <label>Priority Fee</label>
+                <strong id="preview-priority-fee">0.000005</strong>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
     </div>
   `;
 
@@ -1432,6 +1505,15 @@ function showTokenCreationForm() {
 
   const form = tokenCreationModal.querySelector('#token-creation-form');
   form.addEventListener('submit', handleTokenCreationSubmit, { once: true });
+  form.addEventListener('input', () => updateTokenPreview(form));
+
+  const logoInput = form.querySelector('#token-logo');
+  if (logoInput && !logoInput.dataset.initialized) {
+    logoInput.addEventListener('change', handleTokenLogoChange);
+    logoInput.dataset.initialized = 'true';
+  }
+
+  updateTokenPreview(form);
 }
 
 function closeTokenCreationForm() {
@@ -1475,6 +1557,71 @@ async function handleTokenCreationSubmit(event) {
 
   closeTokenCreationForm();
   await submitTokenCreation(tokenData);
+}
+
+function updateTokenPreview(form) {
+  if (!tokenCreationModal) return;
+  const previewName = tokenCreationModal.querySelector('#token-preview-name');
+  const previewSymbol = tokenCreationModal.querySelector('#token-preview-symbol');
+  const previewDescription = tokenCreationModal.querySelector('#token-preview-description');
+  const previewDevBuy = tokenCreationModal.querySelector('#preview-dev-buy');
+  const previewSlippage = tokenCreationModal.querySelector('#preview-slippage');
+  const previewPriority = tokenCreationModal.querySelector('#preview-priority-fee');
+  const socialsList = tokenCreationModal.querySelector('#token-preview-socials');
+
+  const name = form.querySelector('#token-name')?.value?.trim() || 'Your token name';
+  const symbol = form.querySelector('#token-symbol')?.value?.trim() || 'SYMB';
+  const description = form.querySelector('#token-description')?.value?.trim() || 'Add a compelling description to help holders understand your mission.';
+  const devBuy = form.querySelector('#dev-buy-amount')?.value || '0.20';
+  const slippage = form.querySelector('#slippage')?.value || '1.0';
+  const priorityFee = form.querySelector('#priority-fee')?.value || '0.000005';
+
+  if (previewName) previewName.textContent = name;
+  if (previewSymbol) previewSymbol.textContent = symbol.toUpperCase();
+  if (previewDescription) previewDescription.textContent = description;
+  if (previewDevBuy) previewDevBuy.textContent = `${devBuy} SOL`;
+  if (previewSlippage) previewSlippage.textContent = `${slippage}%`;
+  if (previewPriority) previewPriority.textContent = priorityFee;
+
+  if (socialsList) {
+    ['twitter', 'telegram', 'website'].forEach((social) => {
+      const value = form.querySelector(`#token-${social}`)?.value?.trim();
+      const item = socialsList.querySelector(`[data-social="${social}"]`);
+      if (item) {
+        if (value) {
+          const hostname = value.replace(/https?:\/\//, '').split('/')[0] || value;
+          item.classList.remove('hidden');
+          item.querySelector('span.material-symbols-outlined').nextSibling?.remove;
+          item.lastChild?.remove;
+          item.textContent = hostname;
+          item.prepend(item.dataset.iconElement || document.createElement('span'));
+        } else {
+          item.classList.add('hidden');
+        }
+      }
+    });
+  }
+}
+
+function handleTokenLogoChange(event) {
+  const file = event.target?.files?.[0];
+  const previewLogo = tokenCreationModal?.querySelector('#token-preview-logo');
+  if (!previewLogo) return;
+
+  if (file) {
+    const img = document.createElement('img');
+    img.alt = 'Token logo preview';
+    img.className = 'preview-logo-image';
+    const reader = new FileReader();
+    reader.onload = () => {
+      img.src = reader.result;
+      previewLogo.innerHTML = '';
+      previewLogo.appendChild(img);
+    };
+    reader.readAsDataURL(file);
+  } else {
+    previewLogo.innerHTML = '<span class="material-symbols-outlined">token</span>';
+  }
 }
 
 async function submitTokenCreation(tokenData) {

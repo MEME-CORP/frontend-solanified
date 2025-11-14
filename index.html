@@ -74,6 +74,10 @@
                             <span class="material-symbols-outlined">send</span>
                             Transfer SOL Out
                         </button>
+                        <button class="secondary-button" onclick="checkDeveloperBalance()" id="check-dev-balance-btn" style="display: none;">
+                            <span class="material-symbols-outlined">insights</span>
+                            Check Developer Balance
+                        </button>
                         <button class="secondary-button" onclick="sellDistributorSpl()" id="sell-spl-btn" style="display: none;">
                             <span class="material-symbols-outlined">sell</span>
                             Sell SPL Tokens
@@ -145,10 +149,16 @@
                                             <span>Dev SPL:</span>
                                             <span id="dev-spl-balance">0.000</span>
                                         </div>
-                                        <button class="secondary-button" id="sell-dev-spl-btn" style="display: none;" onclick="sellDevSpl()">
-                                            <span class="material-symbols-outlined">sell</span>
-                                            Sell Dev SPL
-                                        </button>
+                                        <div class="dev-action-row">
+                                            <button class="secondary-button subtle" type="button" onclick="checkDeveloperBalance()">
+                                                <span class="material-symbols-outlined">insights</span>
+                                                Check Dev Balance
+                                            </button>
+                                            <button class="secondary-button" id="sell-dev-spl-btn" style="display: none;" onclick="sellDevSpl()">
+                                                <span class="material-symbols-outlined">sell</span>
+                                                Sell Dev SPL
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>

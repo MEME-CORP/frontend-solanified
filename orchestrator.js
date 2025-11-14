@@ -16,6 +16,40 @@ function getBundlerTimeoutMs(bundlerBalance) {
   if (Number.isNaN(parsedBalance) || parsedBalance <= 0) {
     return API_TIMEOUT * 4; // fallback of ~2 minutes
   }
+
+/**
+ * Verify developer wallet balances (SOL + SPL)
+ */
+async function verifyDevWalletBalance(userWalletId) {
+  try {
+    showLoadingOverlay(true, 'Checking developer wallet balance...');
+
+    const response = await makeOrchestratorRequest('/api/orchestrator/verify-dev-wallet-balance', 'POST', {
+      user_wallet_id: userWalletId
+    });
+
+    console.log('✅ Developer balance verified:', response);
+
+    if (response?.balance_updated) {
+      showSnackbar(`Developer balance updated: ${response.current_balance_sol} SOL`, 'success');
+    }
+
+    return {
+      userWalletId: response?.user_wallet_id,
+      devPublicKey: response?.dev_public_key,
+      previousBalance: response?.previous_balance_sol,
+      currentBalance: response?.current_balance_sol,
+      currentSplBalance: response?.current_balance_spl,
+      balanceUpdated: response?.balance_updated
+    };
+
+  } catch (error) {
+    handleOrchestratorError(error, 'verify developer wallet balance');
+    return null;
+  } finally {
+    showLoadingOverlay(false);
+  }
+}
   return Math.ceil(parsedBalance) * 150000;
 }
 
@@ -472,7 +506,8 @@ window.OrchestratorAPI = {
   // Wallet operations
   createInAppWallet,
   verifyInAppBalance,
-  
+  verifyDevWalletBalance,
+
   // Bundler operations
   createBundler,
   
