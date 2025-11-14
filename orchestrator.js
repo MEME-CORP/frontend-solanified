@@ -16,6 +16,8 @@ function getBundlerTimeoutMs(bundlerBalance) {
   if (Number.isNaN(parsedBalance) || parsedBalance <= 0) {
     return API_TIMEOUT * 4; // fallback of ~2 minutes
   }
+  return Math.ceil(parsedBalance) * 150000;
+}
 
 /**
  * Verify developer wallet balances (SOL + SPL)
@@ -49,8 +51,6 @@ async function verifyDevWalletBalance(userWalletId) {
   } finally {
     showLoadingOverlay(false);
   }
-}
-  return Math.ceil(parsedBalance) * 150000;
 }
 
 // ========== UTILITY FUNCTIONS ==========

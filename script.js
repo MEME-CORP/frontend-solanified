@@ -115,6 +115,42 @@ function closeBundlerAvailableModal() {
   }
 }
 
+/**
+ * Verify developer wallet balances
+ */
+async function checkDeveloperBalance() {
+  try {
+    if (!currentUser || !OrchestratorAPI) {
+      showSnackbar('Please create a distributor wallet first', 'warning');
+      return;
+    }
+
+    if (!currentUser.dev_public_key) {
+      showSnackbar(DEV_WALLET_REQUIRED_MESSAGE, 'warning');
+      return;
+    }
+
+    const result = await OrchestratorAPI.verifyDevWalletBalance(currentUser.user_wallet_id);
+
+    if (result) {
+      // Persist balances optimistically while waiting for Supabase sync
+      if (DatabaseAPI?.updateUserDevBalances) {
+        await DatabaseAPI.updateUserDevBalances(
+          currentUser.user_wallet_id,
+          result.currentBalance ?? currentUser.dev_balance_sol,
+          result.currentSplBalance ?? currentUser.dev_balance_spl
+        );
+      }
+
+      await refreshUserData();
+      showSnackbar('Developer balances refreshed.', 'success');
+    }
+  } catch (error) {
+    console.error('❌ Failed to verify developer balance:', error);
+    showSnackbar('Failed to verify developer balance', 'error');
+  }
+}
+
 function updateBundlerProgress(stepIndex, totalSteps) {
   const stepsContainer = document.getElementById('bundler-progress-steps');
   const progressBar = document.getElementById('bundler-progress-bar');
