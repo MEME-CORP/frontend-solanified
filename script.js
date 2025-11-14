@@ -18,6 +18,7 @@ let devWalletPollInterval = null;
 let isDevWalletPolling = false;
 let bundlerProgressInterval = null;
 let bundlerProgressModal = null;
+let bundlerAvailableModal = null;
 let bundlerProgressPhase = 0;
 let currentTheme = 'light';
 
