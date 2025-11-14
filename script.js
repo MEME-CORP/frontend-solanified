@@ -434,6 +434,8 @@ async function connectWallet() {
     }
     
     showSnackbar(message, 'error');
+  } finally {
+    showLoadingOverlay(false);
   }
 }
 
