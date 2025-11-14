@@ -1038,7 +1038,7 @@ async function loadBundlers() {
           </div>
           <div class="list-item-trailing">
             ${hasSplTokens ? `
-              <button class="secondary-button sell-token-btn" onclick="showSellSplTokenModal(${bundler.id})">
+              <button class="secondary-button sell-token-btn" onclick="showSellSplTokenModal({ source: 'bundler', bundlerId: ${bundler.id} })">
                 <span class="material-symbols-outlined">sell</span>
                 Sell Token
               </button>
