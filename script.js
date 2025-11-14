@@ -439,7 +439,7 @@ async function connectWallet() {
   }
 }
 
-function showSellSplTokenModal(arg) {
+async function showSellSplTokenModal(arg) {
   try {
     if (!currentUser) {
       showSnackbar('Connect your wallet first', 'warning');
@@ -465,15 +465,30 @@ function showSellSplTokenModal(arg) {
     if (source === 'developer') {
       balance = parseFloat(currentUser?.dev_balance_spl || '0');
     } else if (bundlerId) {
-      const bundler = currentUser?.bundlers?.find(b => b.id === bundlerId);
+      const targetId = Number(bundlerId);
+      const bundler = currentUser?.bundlers?.find((b) => Number(b.id) === targetId);
       balance = parseFloat(bundler?.total_balance_spl || '0');
     } else {
       balance = parseFloat(currentUser?.distributor_balance_spl || '0');
     }
 
     if (balance <= 0) {
-      showSnackbar('No SPL tokens available to sell.', 'warning');
-      return;
+      if (bundlerId) {
+        await refreshBundlers();
+        const targetId = Number(bundlerId);
+        const refreshedBundler = !Number.isNaN(targetId)
+          ? currentUser?.bundlers?.find((b) => Number(b.id) === targetId)
+          : null;
+        const refreshedBalance = parseFloat(refreshedBundler?.total_balance_spl || '0');
+        if (refreshedBalance <= 0) {
+          showSnackbar('No SPL tokens available to sell.', 'warning');
+          return;
+        }
+        balance = refreshedBalance;
+      } else {
+        showSnackbar('No SPL tokens available to sell.', 'warning');
+        return;
+      }
     }
 
     if (sellSplModal) {
@@ -972,6 +987,7 @@ async function loadBundlers() {
     bundlersList.innerHTML = '<div class="loading-state"><div class="spinner"></div><span>Loading bundlers...</span></div>';
     
     const bundlers = await DatabaseAPI.getUserBundlers(currentUser.user_wallet_id);
+    mergeUserData({ bundlers });
     
     // Filter out inactive bundlers - only show active ones
     const activeBundlers = bundlers.filter(bundler => bundler.is_active);
