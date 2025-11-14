@@ -77,6 +77,37 @@ function showBundlerProgressModal(totalSteps) {
   updateBundlerProgress(0, totalSteps);
 }
 
+function showBundlerAvailableModal(balanceSol = 0) {
+  if (bundlerAvailableModal) {
+    bundlerAvailableModal.remove();
+  }
+
+  bundlerAvailableModal = document.createElement('div');
+  bundlerAvailableModal.className = 'modal-overlay';
+  bundlerAvailableModal.id = 'bundler-available-modal';
+
+  bundlerAvailableModal.innerHTML = `
+    <div class="modal-content">
+      <div class="modal-header">
+        <span class="material-symbols-outlined">check_circle</span>
+        <h3>Bundler Available</h3>
+      </div>
+      <div class="modal-body">
+        <p>Your bundler is available with a balance of ${balanceSol} SOL.</p>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(bundlerAvailableModal);
+}
+
+function closeBundlerAvailableModal() {
+  if (bundlerAvailableModal) {
+    bundlerAvailableModal.remove();
+    bundlerAvailableModal = null;
+  }
+}
+
 function updateBundlerProgress(stepIndex, totalSteps) {
   const stepsContainer = document.getElementById('bundler-progress-steps');
   const progressBar = document.getElementById('bundler-progress-bar');
