@@ -103,6 +103,10 @@ function showBundlerAvailableModal(balanceSol = 0) {
 }
 
 function closeBundlerAvailableModal() {
+  if (!bundlerAvailableModal) {
+    bundlerAvailableModal = document.getElementById('bundler-available-modal');
+  }
+
   if (bundlerAvailableModal) {
     bundlerAvailableModal.remove();
     bundlerAvailableModal = null;
@@ -139,6 +143,36 @@ function closeBundlerProgressModal() {
     bundlerProgressModal = null;
   }
   bundlerProgressPhase = 0;
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isTimeoutError(error) {
+  if (!error) return false;
+  if (error.name === 'AbortError') return true;
+  const message = (error.message || '').toLowerCase();
+  return message.includes('timed out') || message.includes('timeout');
+}
+
+async function waitForBundlerCreation(initialCount, timeoutMs = 240000, pollIntervalMs = 10000) {
+  if (!currentUser || !DatabaseAPI) return null;
+  const start = Date.now();
+
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const bundlers = await DatabaseAPI.getUserBundlers(currentUser.user_wallet_id);
+      if (Array.isArray(bundlers) && bundlers.length > initialCount) {
+        return bundlers[0];
+      }
+    } catch (error) {
+      console.error('❌ Failed to poll bundler creation status:', error);
+    }
+    await delay(pollIntervalMs);
+  }
+
+  return null;
 }
 
 function ensureDevWalletStatusElement() {
@@ -1121,6 +1155,7 @@ function showBundlerCreationSuccess(result) {
   `;
   
   document.body.appendChild(modal);
+  bundlerAvailableModal = modal;
 }
 
 /**
@@ -1131,6 +1166,102 @@ function closeBundlerSuccessModal() {
   if (modal) {
     modal.remove();
   }
+}
+
+let tokenCreationModal = null;
+
+function showTokenCreationForm() {
+  if (tokenCreationModal) {
+    tokenCreationModal.remove();
+  }
+
+  tokenCreationModal = document.createElement('div');
+  tokenCreationModal.className = 'modal-overlay';
+  tokenCreationModal.id = 'token-creation-modal';
+
+  tokenCreationModal.innerHTML = `
+    <div class="modal-content token-modal">
+      <div class="modal-header">
+        <span class="material-symbols-outlined">token</span>
+        <h3>Create Token</h3>
+      </div>
+      <form id="token-creation-form" class="modal-body">
+        <div class="form-group">
+          <label for="token-name">Token Name</label>
+          <input id="token-name" name="token-name" type="text" placeholder="e.g. Solanafied" required />
+        </div>
+        <div class="form-group">
+          <label for="token-symbol">Symbol</label>
+          <input id="token-symbol" name="token-symbol" type="text" maxlength="5" placeholder="e.g. SOLFD" required />
+        </div>
+        <div class="form-group">
+          <label for="token-description">Description</label>
+          <textarea id="token-description" name="token-description" rows="3" placeholder="Tell us about your token"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="token-twitter">Twitter URL</label>
+          <input id="token-twitter" name="token-twitter" type="url" placeholder="https://twitter.com/yourproject" />
+        </div>
+        <div class="form-group">
+          <label for="token-telegram">Telegram URL</label>
+          <input id="token-telegram" name="token-telegram" type="url" placeholder="https://t.me/yourproject" />
+        </div>
+        <div class="form-group">
+          <label for="token-website">Website</label>
+          <input id="token-website" name="token-website" type="url" placeholder="https://yourproject.com" />
+        </div>
+        <div class="form-group">
+          <label for="dev-buy-amount">Dev Buy Amount (SOL)</label>
+          <input id="dev-buy-amount" name="dev-buy-amount" type="number" min="0" max="1" step="0.01" placeholder="0.2" />
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="secondary-button" onclick="closeTokenCreationForm()">
+            <span class="material-symbols-outlined">close</span>
+            Cancel
+          </button>
+          <button type="submit" class="primary-button">
+            <span class="material-symbols-outlined">rocket_launch</span>
+            Create Token
+          </button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  document.body.appendChild(tokenCreationModal);
+
+  const form = tokenCreationModal.querySelector('#token-creation-form');
+  form.addEventListener('submit', handleTokenCreationSubmit, { once: true });
+}
+
+function closeTokenCreationForm() {
+  if (tokenCreationModal) {
+    const form = tokenCreationModal.querySelector('#token-creation-form');
+    if (form) {
+      form.removeEventListener('submit', handleTokenCreationSubmit);
+    }
+    tokenCreationModal.remove();
+    tokenCreationModal = null;
+  }
+}
+
+async function handleTokenCreationSubmit(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const formData = new FormData(form);
+
+  const tokenData = {
+    name: formData.get('token-name')?.trim(),
+    symbol: formData.get('token-symbol')?.trim(),
+    description: formData.get('token-description')?.trim(),
+    twitter: formData.get('token-twitter')?.trim(),
+    telegram: formData.get('token-telegram')?.trim(),
+    website: formData.get('token-website')?.trim(),
+    devBuyAmount: parseFloat(formData.get('dev-buy-amount')) || 0
+  };
+
+  closeTokenCreationForm();
+  await submitTokenCreation(tokenData);
 }
 
 /**
@@ -1640,6 +1771,10 @@ async function verifyBalance() {
  * Show bundler creation available prompt
  */
 function showBundlerCreationAvailable(balance) {
+  if (bundlerAvailableModal) {
+    bundlerAvailableModal.remove();
+  }
+
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
   modal.id = 'bundler-available-modal';
