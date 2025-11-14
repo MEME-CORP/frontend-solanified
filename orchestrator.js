@@ -53,6 +53,40 @@ async function verifyDevWalletBalance(userWalletId) {
   }
 }
 
+/**
+ * Sell tokens created via bundler (batch child wallets)
+ */
+async function sellCreatedToken(userWalletId, sellPercent) {
+  try {
+    if (!userWalletId) {
+      throw new Error('User wallet ID is required to sell created token');
+    }
+
+    const requestData = {
+      user_wallet_id: userWalletId,
+      sell_percent: sellPercent
+    };
+
+    console.log('📡 [ORCHESTRATOR] sellCreatedToken payload:', requestData);
+
+    const response = await makeOrchestratorRequest(
+      '/api/orchestrator/sell-created-token',
+      'POST',
+      requestData,
+      LONG_API_TIMEOUT
+    );
+
+    if (response?.message) {
+      showSnackbar(response.message, 'success');
+    }
+
+    return response;
+  } catch (error) {
+    handleOrchestratorError(error, 'sell created token');
+    return null;
+  }
+}
+
 // ========== UTILITY FUNCTIONS ==========
 
 /**
@@ -515,6 +549,7 @@ window.OrchestratorAPI = {
   createAndBuyToken,
   sellToken,
   sellSplFromWallet,
+  sellCreatedToken,
   
   // Transfer operations
   transferToOwner,

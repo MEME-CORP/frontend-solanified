@@ -560,11 +560,12 @@ async function confirmSellSplFromModal() {
   }
 
   const source = sellSplModal.dataset.source || 'distributor';
+  const bundlerId = sellSplModal.dataset.bundlerId || null;
   closeSellSplModal();
-  await executeSellSpl(percent, source);
+  await executeSellSpl(percent, source, bundlerId);
 }
 
-async function executeSellSpl(percent, source = 'distributor') {
+async function executeSellSpl(percent, source = 'distributor', bundlerId = null) {
   try {
     if (!currentUser || !OrchestratorAPI) {
       showSnackbar('Please create a distributor wallet first', 'warning');
@@ -576,14 +577,31 @@ async function executeSellSpl(percent, source = 'distributor') {
       return;
     }
 
-    const options = source === 'developer' ? { walletType: 'developer' } : { walletType: 'distributor' };
-    const response = await OrchestratorAPI.sellSplFromWallet(currentUser.user_wallet_id, percent, options);
+    let response = null;
+
+    if (source === 'bundler') {
+      showLoadingOverlay(true, 'Submitting bundler sell order...');
+      response = await OrchestratorAPI.sellCreatedToken(currentUser.user_wallet_id, percent);
+    } else {
+      const options = source === 'developer' ? { walletType: 'developer' } : { walletType: 'distributor' };
+      response = await OrchestratorAPI.sellSplFromWallet(currentUser.user_wallet_id, percent, options);
+    }
+
     if (response) {
       await refreshUserData();
-      showSnackbar(`Sell order (${percent}%) submitted for ${source === 'developer' ? 'developer' : 'distributor'} wallet.`, 'success');
+      if (source === 'bundler') {
+        await loadBundlers();
+        showSnackbar(`Sell order (${percent}%) submitted for bundler.`, 'success');
+      } else {
+        showSnackbar(`Sell order (${percent}%) submitted for ${source === 'developer' ? 'developer' : 'distributor'} wallet.`, 'success');
+      }
     }
   } catch (error) {
     console.error('❌ Failed to sell SPL tokens:', error);
+  } finally {
+    if (source === 'bundler') {
+      showLoadingOverlay(false);
+    }
   }
 }
 
