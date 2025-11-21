@@ -28,6 +28,8 @@ const DEV_WALLET_REQUIRED_MESSAGE = 'Your developer wallet is still being set up
 const DEV_WALLET_MIN_SOL_FOR_TOKENS = 0.1;
 const TOKEN_LOGO_MAX_BYTES = 2 * 1024 * 1024; // 2 MB
 const THEME_STORAGE_KEY = 'solanafied-theme';
+const MIN_PARALLEL_BUY_SLIPPAGE_PERCENT = 50;
+const MIN_PARALLEL_BUY_SLIPPAGE_BPS = MIN_PARALLEL_BUY_SLIPPAGE_PERCENT * 100;
 
 function mergeUserData(partialUser = {}) {
   const existing = currentUser || {};
@@ -242,10 +244,48 @@ function validateTokenFormData(tokenData = {}) {
   if (tokenData.devBuyAmount < 0.05) {
     errors.push('Dev buy amount must be at least 0.05 SOL.');
   }
+  if (tokenData.slippage < MIN_PARALLEL_BUY_SLIPPAGE_PERCENT) {
+    errors.push(`Slippage must be at least ${MIN_PARALLEL_BUY_SLIPPAGE_PERCENT}% (${MIN_PARALLEL_BUY_SLIPPAGE_BPS} bps) for parallel buys.`);
+  }
   if (tokenData.logoFile && tokenData.logoFile.size > TOKEN_LOGO_MAX_BYTES) {
     errors.push('Logo file must be smaller than 2 MB.');
   }
   return errors;
+}
+
+function clampSlippagePercent(value) {
+  const parsed = parseFloat(value);
+  if (Number.isNaN(parsed)) {
+    return MIN_PARALLEL_BUY_SLIPPAGE_PERCENT;
+  }
+  return Math.max(MIN_PARALLEL_BUY_SLIPPAGE_PERCENT, parsed);
+}
+
+function initializeSlippageInput(form) {
+  if (!form) return;
+  const input = form.querySelector('#slippage');
+  if (!input || input.dataset.minEnforced === 'true') return;
+
+  const clampAndPreview = (shouldNotify = false) => {
+    const previous = parseFloat(input.value);
+    const normalized = clampSlippagePercent(previous);
+    if (normalized !== previous) {
+      input.value = normalized;
+      if (shouldNotify) {
+        showSnackbar(`Parallel buys require ≥${MIN_PARALLEL_BUY_SLIPPAGE_PERCENT}% slippage (${MIN_PARALLEL_BUY_SLIPPAGE_BPS} bps). Value updated.`, 'info');
+      }
+    }
+    updateTokenPreview(form);
+  };
+
+  input.min = MIN_PARALLEL_BUY_SLIPPAGE_PERCENT;
+  input.max = 100;
+  input.step = 1;
+  clampAndPreview(false);
+
+  input.addEventListener('change', () => clampAndPreview(true));
+  input.addEventListener('blur', () => clampAndPreview(false));
+  input.dataset.minEnforced = 'true';
 }
 
 function showDevWalletStatus(message, state = 'info') {
@@ -1524,7 +1564,17 @@ function showTokenCreationForm() {
               </div>
               <div class="form-group">
                 <label for="slippage">Slippage (%)</label>
-                <input id="slippage" name="slippage" type="number" min="0.5" max="5" step="0.1" value="1.0" />
+                <input
+                  id="slippage"
+                  name="slippage"
+                  type="number"
+                  min="${MIN_PARALLEL_BUY_SLIPPAGE_PERCENT}"
+                  max="100"
+                  step="1"
+                  value="${MIN_PARALLEL_BUY_SLIPPAGE_PERCENT}"
+                  required
+                />
+                <small>Parallel buys require ≥${MIN_PARALLEL_BUY_SLIPPAGE_PERCENT}% slippage (${MIN_PARALLEL_BUY_SLIPPAGE_BPS} bps).</small>
               </div>
             </div>
             <div class="form-group">
@@ -1587,6 +1637,8 @@ function showTokenCreationForm() {
   form.addEventListener('submit', handleTokenCreationSubmit, { once: true });
   form.addEventListener('input', () => updateTokenPreview(form));
 
+  initializeSlippageInput(form);
+
   const logoInput = form.querySelector('#token-logo');
   if (logoInput && !logoInput.dataset.initialized) {
     logoInput.addEventListener('change', handleTokenLogoChange);
@@ -1620,7 +1672,7 @@ async function handleTokenCreationSubmit(event) {
     telegram: formData.get('token-telegram')?.trim(),
     website: formData.get('token-website')?.trim(),
     devBuyAmount: parseFloat(formData.get('dev-buy-amount')) || 0,
-    slippage: parseFloat(formData.get('slippage')) || 1.0,
+    slippage: clampSlippagePercent(parseFloat(formData.get('slippage')) || MIN_PARALLEL_BUY_SLIPPAGE_PERCENT),
     priorityFee: formData.get('priority-fee')?.trim() || '0.000005',
     logoFile: formData.get('token-logo')
   };
@@ -1653,14 +1705,14 @@ function updateTokenPreview(form) {
   const symbol = form.querySelector('#token-symbol')?.value?.trim() || 'SYMB';
   const description = form.querySelector('#token-description')?.value?.trim() || 'Add a compelling description to help holders understand your mission.';
   const devBuy = form.querySelector('#dev-buy-amount')?.value || '0.20';
-  const slippage = form.querySelector('#slippage')?.value || '1.0';
+  const slippageValue = clampSlippagePercent(form.querySelector('#slippage')?.value || MIN_PARALLEL_BUY_SLIPPAGE_PERCENT);
   const priorityFee = form.querySelector('#priority-fee')?.value || '0.000005';
 
   if (previewName) previewName.textContent = name;
   if (previewSymbol) previewSymbol.textContent = symbol.toUpperCase();
   if (previewDescription) previewDescription.textContent = description;
   if (previewDevBuy) previewDevBuy.textContent = `${devBuy} SOL`;
-  if (previewSlippage) previewSlippage.textContent = `${slippage}%`;
+  if (previewSlippage) previewSlippage.textContent = `${slippageValue}%`;
   if (previewPriority) previewPriority.textContent = priorityFee;
 
   if (socialsList) {
